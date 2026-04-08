@@ -68,7 +68,7 @@ class BatchProcessor(ProcessingMethod):
         - full_batch: Process entire batch, accumulate updates, apply once
         - minibatch: Process in minibatches, update weights after each
         - Ray multi-GPU: Distribute processing across multiple GPUs with NCCL
-        - GDS streaming: Stream data directly from storage to GPU
+        - Ray Pathway streaming: Stream data directly from storage to GPU
         
         Args:
             samples: Input batch (n_samples, n_features) or path to data file (str)
@@ -83,7 +83,7 @@ class BatchProcessor(ProcessingMethod):
         if isinstance(samples, str):
             raise ValueError(
                 "File path provided but BatchProcessor only supports in-memory data. "
-                "Use ProcessorFactory with ray_config for GDS file streaming support."
+                "Use ProcessorFactory with ray_config for Ray Pathway file streaming support."
             )
         
         # chunk_size is always set in config, no need for fallback
