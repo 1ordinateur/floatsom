@@ -18,6 +18,7 @@ pytest.importorskip("ray")
 
 from floatsom.data.fast_array_store import FastArrayStore
 from floatsom.floatsom_params import RayConfig
+from floatsom.processing.ray_ops.ray_inference_manager import RayInferenceWorkerManager
 from floatsom.processing.ray_ops import ray_pipeline_base as manager_module
 from floatsom.processing.ray_ops.workers import ray_pipeline_base_worker as worker_module
 
@@ -161,6 +162,93 @@ def test_create_local_fast_array_uses_thread_pool_when_multiple_cpus(tmp_path, m
     local_store = FastArrayStore(meta["path"], mode="r")
     np.testing.assert_array_equal(local_store.mmap_array, source_data[5:29])
     local_store.close()
+
+
+def test_use_existing_fast_array_sets_worker_span(tmp_path, monkeypatch):
+    ray_config = _build_ray_config(tmp_path / "shared", tmp_path / "local")
+
+    worker = worker_module.RayPipelineBaseWorker.__new__(worker_module.RayPipelineBaseWorker)
+    worker.ray_config = ray_config
+    worker.worker_id = 0
+    worker.loader_chunk_size = 16
+
+    initialized = {"called": False}
+    monkeypatch.setattr(worker, "_initialize_data_loader", lambda: initialized.__setitem__("called", True))
+
+    source_path = tmp_path / "source.fast"
+    source_store = FastArrayStore(str(source_path), mode="w")
+    source_data = np.arange(120, dtype=np.float32).reshape(40, 3)
+    source_arr = source_store.create(shape=source_data.shape, dtype=np.float32, chunks=(16, 3))
+    source_arr[:] = source_data
+    source_store.close()
+
+    meta = worker.use_existing_fast_array(str(source_path))
+
+    assert initialized["called"] is True
+    assert meta["shape"] == source_data.shape
+    assert worker.data_start_idx == 0
+    assert worker.data_end_idx == source_data.shape[0]
+    assert worker.n_samples == source_data.shape[0]
+    assert worker.n_features == source_data.shape[1]
+
+
+def test_prepare_fast_array_inference_uses_existing_single_worker_store(tmp_path, monkeypatch):
+    ray_config = _build_ray_config(tmp_path / "shared", tmp_path / "local")
+    manager = RayInferenceWorkerManager(num_gpus=1, ray_config=ray_config)
+
+    events = {"initialized": [], "waits": [], "distributed": None, "ready": 0}
+
+    class _RemoteRecorder:
+        def __init__(self, name):
+            self.name = name
+            self.calls = []
+
+        def remote(self, *args, **kwargs):
+            self.calls.append((args, kwargs))
+            return {"name": self.name, "args": args, "kwargs": kwargs}
+
+    class _FakeWorker:
+        def __init__(self):
+            self.wipe_local_storage = _RemoteRecorder("wipe")
+            self.configure_chunk_sampling = _RemoteRecorder("configure")
+
+    fake_worker = _FakeWorker()
+
+    def _fake_initialize_workers(worker_class, chunk_size):
+        events["initialized"].append((worker_class, chunk_size))
+        manager.workers = [fake_worker]
+        return manager.workers
+
+    monkeypatch.setattr(manager, "initialize_workers", _fake_initialize_workers)
+    monkeypatch.setattr(
+        manager,
+        "wait_for_worker_futures",
+        lambda futures, *, phase, timeout_s=None, poll_interval_s=5.0: events["waits"].append((phase, len(futures))) or futures,
+    )
+    monkeypatch.setattr(
+        manager,
+        "_distribute_fast_array_once",
+        lambda source_info: events.__setitem__("distributed", dict(source_info)) or {"ok": True},
+    )
+    monkeypatch.setattr(
+        manager,
+        "ensure_distribution_ready",
+        lambda timeout=None: events.__setitem__("ready", events["ready"] + 1) or True,
+    )
+
+    source_path = tmp_path / "pixels.fast"
+    source_path.mkdir()
+    result = manager.prepare_fast_array_inference(source_path=str(source_path))
+
+    assert result == {"ok": True}
+    assert events["initialized"][0][1] == ray_config.chunk_size
+    assert events["distributed"] == {
+        "type": "file",
+        "path": str(source_path),
+        "format": "fast_array",
+    }
+    assert events["ready"] == 1
+    assert fake_worker.configure_chunk_sampling.calls == [((ray_config.chunk_size, 1.0, "full"), {"whole_chunk_random": False})]
 
 
 class _RemoteCallable:

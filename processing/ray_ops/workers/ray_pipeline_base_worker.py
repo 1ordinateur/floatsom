@@ -1173,6 +1173,11 @@ class RayPipelineBaseWorker:
         n_samples = store.n_samples
         n_features = store.n_features
         store.close()
+
+        self.data_start_idx = 0
+        self.data_end_idx = int(n_samples)
+        self.n_samples = int(n_samples)
+        self.n_features = int(n_features)
         
         # Initialize CPUGPUFastLoader
         try:
