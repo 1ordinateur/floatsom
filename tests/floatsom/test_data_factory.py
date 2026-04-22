@@ -250,6 +250,19 @@ class TestFileDataSource:
 
         assert source.get_shape() == (100, 50)
 
+    def test_multi_key_npz_file_requires_explicit_loader(self, tmp_path):
+        """Multi-key .npz archives should not silently pick the first array."""
+        file_path = tmp_path / "test_data.npz"
+        np.savez(
+            file_path,
+            W=np.random.rand(100, 50).astype(np.float32),
+            gene_names=np.asarray(["a", "b"], dtype=object),
+        )
+
+        source = DataSourceFactory.create(str(file_path))
+        with pytest.raises(ValueError, match="explicit key-aware loader"):
+            source.get_shape()
+
     def test_csv_file_loading(self, tmp_path):
         """Should load .csv files correctly."""
         data = np.random.rand(50, 10).astype(np.float32)

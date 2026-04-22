@@ -80,7 +80,7 @@ class FileDataSource(DataSource):
 
             suffix = self.file_path.suffix.lower()
             if suffix == ".npy":
-                data = np.load(str(self.file_path))
+                data = np.load(str(self.file_path), allow_pickle=False)
                 if len(data.shape) == 1:
                     data = data.reshape(-1, 1)
                 self._shape = data.shape
@@ -89,8 +89,15 @@ class FileDataSource(DataSource):
                 return
 
             if suffix == ".npz":
-                npz = np.load(str(self.file_path))
-                data = npz[npz.files[0]]
+                with np.load(str(self.file_path), allow_pickle=False) as npz:
+                    if not npz.files:
+                        raise ValueError(f".npz archive contains no arrays: {self.file_path}")
+                    if len(npz.files) != 1:
+                        raise ValueError(
+                            f".npz archive {self.file_path} contains multiple arrays "
+                            f"({', '.join(npz.files)}). Use an explicit key-aware loader."
+                        )
+                    data = np.asarray(npz[npz.files[0]])
                 if len(data.shape) == 1:
                     data = data.reshape(-1, 1)
                 self._shape = data.shape
