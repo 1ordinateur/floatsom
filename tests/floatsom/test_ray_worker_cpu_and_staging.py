@@ -248,7 +248,53 @@ def test_prepare_fast_array_inference_uses_existing_single_worker_store(tmp_path
         "format": "fast_array",
     }
     assert events["ready"] == 1
-    assert fake_worker.configure_chunk_sampling.calls == [((ray_config.chunk_size, 1.0, "full"), {"whole_chunk_random": False})]
+    assert fake_worker.configure_chunk_sampling.calls == [
+        (
+            (ray_config.chunk_size, 1.0, "full"),
+            {"whole_chunk_random": False, "randomize_chunk_order": False},
+        )
+    ]
+
+
+def test_configure_chunk_sampling_can_disable_random_loader_order():
+    worker = worker_module.RayPipelineBaseWorker.__new__(worker_module.RayPipelineBaseWorker)
+    worker.worker_id = 3
+    worker.chunk_size = 8
+    worker.randomize_chunk_order = True
+
+    worker.configure_chunk_sampling(
+        loader_chunk_size=8,
+        sampling_fraction=1.0,
+        sampling_method="full",
+        whole_chunk_random=False,
+        randomize_chunk_order=False,
+    )
+
+    assert worker.randomize_chunk_order is False
+
+
+def test_initialize_data_loader_passes_worker_id_and_randomization(monkeypatch):
+    worker = worker_module.RayPipelineBaseWorker.__new__(worker_module.RayPipelineBaseWorker)
+    worker.worker_id = 7
+    worker.data_path = "/tmp/fake-fast-array"
+    worker.loader_chunk_size = 16
+    worker.randomize_chunk_order = False
+    worker.data_loader = None
+    worker._loader_initialized = False
+    worker.multi_buffering_enabled = False
+    worker.multi_buffering_num_buffers = 0
+    monkeypatch.setattr(worker, "_detect_assigned_cpu_count", lambda: 4)
+    monkeypatch.setattr(worker_module, "CPUGPUFastLoader", _DummyRamLoader)
+
+    worker._initialize_data_loader()
+
+    assert worker._loader_initialized is True
+    assert isinstance(worker.data_loader, _DummyRamLoader)
+    assert worker.data_loader.kwargs["array_path"] == "/tmp/fake-fast-array"
+    assert worker.data_loader.kwargs["chunk_size"] == 16
+    assert worker.data_loader.kwargs["randomize_chunks"] is False
+    assert worker.data_loader.kwargs["cpu_workers"] == 3
+    assert worker.data_loader.kwargs["worker_id"] == 7
 
 
 class _RemoteCallable:

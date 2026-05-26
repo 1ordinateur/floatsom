@@ -371,6 +371,7 @@ class RayPipelineBaseWorker:
         sampling_fraction: float,
         sampling_method: str = "full",
         whole_chunk_random: bool = False,
+        randomize_chunk_order: Optional[bool] = None,
     ) -> None:
         """
         Configure how many samples are read from storage versus processed on GPU.
@@ -384,14 +385,19 @@ class RayPipelineBaseWorker:
         self.sampling_fraction = sampling_fraction
         self.sampling_method = str(sampling_method or "full").lower()
         self.whole_chunk_random = bool(whole_chunk_random)
+        if not hasattr(self, "randomize_chunk_order"):
+            self.randomize_chunk_order = True
+        if randomize_chunk_order is not None:
+            self.randomize_chunk_order = bool(randomize_chunk_order)
         logger.info(
-            "Worker %d sampling configured: method=%s loader chunk size %d, effective chunk size %d, fraction %.4f, whole_chunk_random=%s",
+            "Worker %d sampling configured: method=%s loader chunk size %d, effective chunk size %d, fraction %.4f, whole_chunk_random=%s, randomize_chunk_order=%s",
             self.worker_id,
             self.sampling_method,
             self.loader_chunk_size,
             self.chunk_size,
             self.sampling_fraction,
             self.whole_chunk_random,
+            self.randomize_chunk_order,
         )
 
     def uses_shard_local_random_sampling(self) -> bool:
@@ -466,6 +472,7 @@ class RayPipelineBaseWorker:
                 chunk_size=self.loader_chunk_size,
                 randomize_chunks=self.randomize_chunk_order,
                 cpu_workers=prefetch_threads,
+                worker_id=int(self.worker_id),
             )
 
             if self.multi_buffering_enabled and self.multi_buffering_num_buffers > 1:

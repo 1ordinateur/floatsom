@@ -50,6 +50,7 @@ class RayInferenceWorkerManager(RayWorkerManager):
                 1.0,
                 "full",
                 whole_chunk_random=False,
+                randomize_chunk_order=False,
             )
             for worker in self.workers
         ]
