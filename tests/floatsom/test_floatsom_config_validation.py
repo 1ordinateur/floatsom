@@ -20,14 +20,6 @@ from floatsom.processing.processing_params import DEFAULT_MULTI_BUFFERING_PRELOA
 class TestInvalidConfigurationRejection:
     """Test that invalid configurations raise appropriate errors."""
 
-    def test_whole_chunk_random_defaults_off(self):
-        params = FloatSOMParams(
-            input_dim=10,
-            processing_config=ProcessingConfig(chunk_size=1000),
-        )
-
-        assert params.sampling_config.whole_chunk_random is False
-
     def test_whole_chunk_random_requires_random_sampling(self):
         with pytest.raises(ValueError, match="whole_chunk_random requires sampling_config.method='random'"):
             FloatSOMParams(

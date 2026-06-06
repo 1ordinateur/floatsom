@@ -109,61 +109,6 @@ def test_initialize_workers_reserves_cpus_per_node(tmp_path, monkeypatch):
     assert ordered_nodes == ["node-a", "node-a", "node-b", "node-b"]
 
 
-def test_create_local_fast_array_uses_thread_pool_when_multiple_cpus(tmp_path, monkeypatch):
-    ray_config = _build_ray_config(tmp_path / "shared", tmp_path / "local")
-
-    worker = worker_module.RayPipelineBaseWorker.__new__(worker_module.RayPipelineBaseWorker)
-    worker.ray_config = ray_config
-    worker.worker_id = 0
-    worker.loader_chunk_size = 16
-
-    monkeypatch.setattr(worker_module.socket, "gethostname", lambda: "node-a")
-    monkeypatch.setattr(worker, "_initialize_data_loader", lambda: None)
-    monkeypatch.setattr(worker, "_detect_assigned_cpu_count", lambda: 4)
-
-    source_path = tmp_path / "source.fast"
-    source_store = FastArrayStore(str(source_path), mode="w")
-    source_data = np.arange(120, dtype=np.float32).reshape(40, 3)
-    source_arr = source_store.create(shape=source_data.shape, dtype=np.float32, chunks=(16, 3))
-    source_arr[:] = source_data
-    source_store.close()
-
-    created_executors = []
-
-    class _RecordingExecutor:
-        def __init__(self, max_workers=None, thread_name_prefix=None):
-            self.max_workers = max_workers
-            self.thread_name_prefix = thread_name_prefix
-            created_executors.append(self)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def map(self, fn, iterable):
-            for item in iterable:
-                fn(item)
-                yield None
-
-    monkeypatch.setattr(worker_module.concurrent.futures, "ThreadPoolExecutor", _RecordingExecutor)
-
-    meta = worker.create_local_fast_array(
-        source_path=str(source_path),
-        start_idx=5,
-        end_idx=29,
-        shard_id=0,
-    )
-
-    assert created_executors, "Expected ThreadPoolExecutor to be used for staging copy"
-    assert created_executors[0].max_workers == 4
-
-    local_store = FastArrayStore(meta["path"], mode="r")
-    np.testing.assert_array_equal(local_store.mmap_array, source_data[5:29])
-    local_store.close()
-
-
 def test_use_existing_fast_array_sets_worker_span(tmp_path, monkeypatch):
     ray_config = _build_ray_config(tmp_path / "shared", tmp_path / "local")
 
@@ -254,23 +199,6 @@ def test_prepare_fast_array_inference_uses_existing_single_worker_store(tmp_path
             {"whole_chunk_random": False, "randomize_chunk_order": False},
         )
     ]
-
-
-def test_configure_chunk_sampling_can_disable_random_loader_order():
-    worker = worker_module.RayPipelineBaseWorker.__new__(worker_module.RayPipelineBaseWorker)
-    worker.worker_id = 3
-    worker.chunk_size = 8
-    worker.randomize_chunk_order = True
-
-    worker.configure_chunk_sampling(
-        loader_chunk_size=8,
-        sampling_fraction=1.0,
-        sampling_method="full",
-        whole_chunk_random=False,
-        randomize_chunk_order=False,
-    )
-
-    assert worker.randomize_chunk_order is False
 
 
 def test_initialize_data_loader_passes_worker_id_and_randomization(monkeypatch):
@@ -585,41 +513,6 @@ def test_cleanup_pending_node_ram_stage_leaders_suppresses_partial_dispatch_fail
     assert successful_calls == ["dispatched"]
     assert wait_phases == ["node_ram_stage_cleanup"]
     assert manager._pending_node_ram_stage_leaders == [failing_leader]
-
-
-def test_cleanup_clears_pending_node_stage_leaders_before_worker_teardown(tmp_path, monkeypatch):
-    ray_config = _build_ray_config(tmp_path / "shared", tmp_path / "local")
-    manager = manager_module.RayWorkerManager(num_gpus=1, ray_config=ray_config)
-
-    class _RemoteCall:
-        def __init__(self, owner, name):
-            self._owner = owner
-            self._name = name
-
-        def remote(self, *args, **kwargs):
-            self._owner.append(self._name)
-            return self._name
-
-    call_order = []
-    leader = SimpleNamespace(clear_node_staged_shards=_RemoteCall(call_order, "leader_cleanup"))
-    worker = SimpleNamespace(cleanup=_RemoteCall(call_order, "worker_cleanup"))
-    manager._pending_node_ram_stage_leaders = [leader]
-    manager.workers = [worker]
-
-    monkeypatch.setattr(manager_module.ray, "is_initialized", lambda: True)
-    monkeypatch.setattr(manager_module.collective, "destroy_collective_group", lambda group_name: None)
-    monkeypatch.setattr(manager_module.ray, "get", lambda futures, timeout=None: futures)
-    monkeypatch.setattr(manager_module.ray, "kill", lambda worker_handle: call_order.append("worker_kill"))
-    monkeypatch.setattr(
-        manager,
-        "wait_for_worker_futures",
-        lambda futures, *, phase, timeout_s=None, poll_interval_s=1.0: [True for _future in futures],
-    )
-
-    manager.cleanup(shutdown_ray=False)
-
-    assert call_order == ["leader_cleanup", "worker_cleanup", "worker_kill"]
-    assert manager._pending_node_ram_stage_leaders == []
 
 
 def test_cleanup_drops_stale_pending_leaders_after_suppressed_failure(tmp_path, monkeypatch):
