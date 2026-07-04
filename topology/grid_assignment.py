@@ -8,44 +8,54 @@ import numpy as np
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Optional, List
-import warnings
 import cugraph
 import cudf
 from scipy.optimize import linear_sum_assignment
 
-# WARNING: CuPy's Delaunay implementation may be deprecated in newer versions
-# Attempting to import from cupyx.scipy.spatial first, with fallback to local copy
-try:
-    import cupyx.scipy.spatial as cuspatial
-    from cupyx.scipy.spatial import Delaunay
-    logger = logging.getLogger(__name__)
-    logger.info("Successfully imported Delaunay from cupyx.scipy.spatial")
-except (ImportError, AttributeError) as e:
-    # Fallback to local copy of Delaunay implementation
-    warnings.warn(
-        f"CuPy's Delaunay import failed ({e}). Using local fallback implementation. "
-        "This may be due to version deprecation in your CuPy environment. "
-        "Consider updating CuPy or using the local implementation permanently.",
-        UserWarning
-    )
-    logger = logging.getLogger(__name__)
-    logger.warning("Using local Delaunay implementation due to CuPy import failure")
-    
-    # Import from local copy
-    from .delaunay_local import Delaunay
+logger = logging.getLogger(__name__)
+
+_VALID_DELAUNAY_BACKENDS = {"cupyx", "local"}
+
+
+def _load_delaunay_backend(backend: str):
+    """Load the explicitly configured Delaunay implementation."""
+    if backend not in _VALID_DELAUNAY_BACKENDS:
+        raise ValueError(
+            f"Invalid Delaunay backend: {backend}. "
+            f"Must be one of {sorted(_VALID_DELAUNAY_BACKENDS)}"
+        )
+
+    if backend == "local":
+        from .delaunay_local import Delaunay
+
+        return Delaunay
+
+    try:
+        from cupyx.scipy.spatial import Delaunay
+    except (ImportError, AttributeError) as exc:
+        raise ImportError(
+            "cupyx.scipy.spatial.Delaunay is required for reform_grid with "
+            "delaunay_backend='cupyx'. Set reform_delaunay_backend='local' "
+            "or call reform_to_grid(..., delaunay_backend='local') to use the "
+            "bundled local backend explicitly."
+        ) from exc
+    return Delaunay
 
 
 class GridAssigner(ABC):
     """Abstract base class for grid assignment using Delaunay triangulation with Force Atlas 2 layout."""
     
-    def __init__(self, chunk_size: int = 1000):
+    def __init__(self, chunk_size: int = 1000, delaunay_backend: str = "cupyx"):
         """
         Initialize grid assigner.
         
         Args:
             chunk_size: Max nodes to process at once for distance matrix computation
+            delaunay_backend: Explicit Delaunay backend ("cupyx" or "local")
         """
         self.chunk_size = chunk_size
+        self.delaunay_backend = delaunay_backend
+        self._delaunay_cls = _load_delaunay_backend(delaunay_backend)
     
     def assign_nodes_to_grid(self, weights: cp.ndarray, num_nodes: int) -> Tuple[Dict, Dict]:
         """
@@ -113,7 +123,7 @@ class GridAssigner(ABC):
             nodes_2d = cp.asarray(nodes_2d, dtype=cp.float32)
         
         # Create Delaunay triangulation on GPU
-        delaunay = Delaunay(nodes_2d)
+        delaunay = self._delaunay_cls(nodes_2d)
         
         # Extract edges from simplices
         simplices = delaunay.simplices  # Shape: (n_triangles, 3)

@@ -28,6 +28,7 @@ _CONTEXTUAL_FLOATSOM_DEFAULT_SAMPLING_KEYS = {"full", "random"}
 _CONTEXTUAL_FLOATSOM_DEFAULT_TOPOLOGY_KEYS = {"hexagonal", "mst", "rng"}
 _VALID_DECAY_TYPES = {"exponential", "linear", "sigmoid", "gaussian", "asymptotic", "fixed"}
 _VALID_INITIALIZATION_METHODS = {"random", "pca", "pca_sampling", "pca_sampling_snake", "pca_density"}
+_VALID_REFORM_DELAUNAY_BACKENDS = {"cupyx", "local"}
 
 
 @lru_cache(maxsize=1)
@@ -404,6 +405,7 @@ class FloatSOMParams:
     # Grid reformation parameters (for MST and other non-grid topologies)
     reform_grid: bool = False  # Whether to reform topology to grid structure after training
     reform_grid_type: str = "regular"  # Options: "regular", "hexagonal"
+    reform_delaunay_backend: str = "cupyx"  # Options: "cupyx", "local"
     
     # System parameters
     verbose: bool = False
@@ -459,6 +461,12 @@ class FloatSOMParams:
 
         if self.initialization_method is None:
             self.initialization_method = contextual_defaults.get("initialization_method", "random")
+        if self.initialization_method not in _VALID_INITIALIZATION_METHODS:
+            valid_initialization_methods = sorted(_VALID_INITIALIZATION_METHODS)
+            raise ValueError(
+                f"Invalid initialization_method: {self.initialization_method}. "
+                f"Must be one of {valid_initialization_methods}"
+            )
 
         if self.processing_config.enable_momentum is None:
             self.processing_config.enable_momentum = bool(contextual_defaults.get("enable_momentum", False))
@@ -517,6 +525,12 @@ class FloatSOMParams:
         valid_topology_variants = ["planar", "toroidal"]
         if self.topology_config.topology_variant not in valid_topology_variants:
             raise ValueError(f"Invalid topology variant: {self.topology_config.topology_variant}. Must be one of {valid_topology_variants}")
+
+        if self.reform_delaunay_backend not in _VALID_REFORM_DELAUNAY_BACKENDS:
+            raise ValueError(
+                f"Invalid reform_delaunay_backend: {self.reform_delaunay_backend}. "
+                f"Must be one of {sorted(_VALID_REFORM_DELAUNAY_BACKENDS)}"
+            )
         
         # Toroidal only valid for grid and hexagonal
         if (

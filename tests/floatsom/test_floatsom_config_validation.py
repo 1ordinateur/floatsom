@@ -391,7 +391,7 @@ class TestProcessingMethodValidation:
 
     def test_valid_processing_methods(self):
         """All valid processing methods should be accepted."""
-        valid_methods = ["batch", "colors", "serial", "minisom"]
+        valid_methods = ["batch", "colors", "minisom"]
 
         for method in valid_methods:
             config_kwargs = {"method": method, "chunk_size": 1000}
@@ -420,6 +420,18 @@ class TestProcessingMethodValidation:
                     method="invalid_processing",
                     chunk_size=1000
                 )
+            )
+
+
+class TestInitializationMethodValidation:
+    """Test centralized initialization method validation."""
+
+    def test_invalid_initialization_method_rejected_after_defaults(self):
+        with pytest.raises(ValueError, match="Invalid initialization_method"):
+            FloatSOMParams(
+                input_dim=10,
+                initialization_method="principal_components",
+                processing_config=ProcessingConfig(chunk_size=1000),
             )
 
 

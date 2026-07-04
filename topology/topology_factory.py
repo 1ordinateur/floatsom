@@ -82,11 +82,9 @@ def create_topology(som_params, data: Optional[cp.ndarray] = None) -> SOMTopolog
             final_mst_frequency=som_params.topology_config.final_mst_frequency,
             total_iterations=som_params.total_iterations
         )
-    elif topology_type in ["grid", "rectangular", "planar", "toroidal"]:
-        # Determine topology type for grid - check both topology_type and topology_variant
+    elif topology_type == "grid":
         topology_config = som_params.topology_config
-        topo_variant = getattr(topology_config, 'topology_variant', None)
-        topo_type = "toroidal" if (topology_type == "toroidal" or topo_variant == "toroidal") else "planar"
+        topo_type = topology_config.topology_variant
 
         topology = GridTopology(
             grid_size=som_params.topology_config.grid_size,
@@ -123,7 +121,7 @@ class TopologyFactory:
     Factory for creating different SOM topology types
     """
     
-    AVAILABLE_TOPOLOGIES = ["grid", "rectangular", "hexagonal", "mst", "rng", "planar", "toroidal"]
+    AVAILABLE_TOPOLOGIES = ["grid", "hexagonal", "mst", "rng"]
     
     @staticmethod
     def create_topology(topology_type: str, **kwargs) -> SOMTopology:
@@ -131,7 +129,7 @@ class TopologyFactory:
         Create topology instance
         
         Args:
-            topology_type: Type of topology ("grid", "hexagonal", "mst", "rng", "rectangular", "planar", "toroidal")
+            topology_type: Type of topology ("grid", "hexagonal", "mst", "rng")
             **kwargs: Topology-specific parameters
             
         Returns:
@@ -144,9 +142,8 @@ class TopologyFactory:
             return TopologyFactory.create_mst_topology(**kwargs)
         elif topology_type == "rng":
             return TopologyFactory.create_rng_topology(**kwargs)
-        elif topology_type in ["grid", "rectangular", "planar", "toroidal"]:
-            toroidal = (topology_type == "toroidal")
-            return TopologyFactory.create_grid_topology(toroidal=toroidal, **kwargs)
+        elif topology_type == "grid":
+            return TopologyFactory.create_grid_topology(**kwargs)
         elif topology_type == "hexagonal":
             return TopologyFactory.create_hexagonal_topology(**kwargs)
         else:
@@ -163,12 +160,11 @@ class TopologyFactory:
         return TopologyFactory.AVAILABLE_TOPOLOGIES.copy()
     
     @staticmethod
-    def create_grid_topology(toroidal: bool = False, **kwargs) -> GridTopology:
+    def create_grid_topology(**kwargs) -> GridTopology:
         """
         Create rectangular grid topology with specified parameters
         
         Args:
-            toroidal: Whether to use toroidal (wrap-around) topology
             **kwargs: Grid topology parameters
             
         Returns:
@@ -180,8 +176,11 @@ class TopologyFactory:
         initialization_method = kwargs.get('initialization_method', 'random')
         seed = kwargs.get('seed', None)
         verbose = kwargs.get('verbose', False)
-        
-        topology_type = "toroidal" if toroidal else "planar"
+        topology_type = kwargs.get('topology_variant', 'planar')
+        if topology_type not in {"planar", "toroidal"}:
+            raise ValueError(
+                f"Invalid topology variant: {topology_type}. Must be one of ['planar', 'toroidal']"
+            )
         
         return GridTopology(
             grid_size=grid_size,
@@ -193,12 +192,11 @@ class TopologyFactory:
         )
     
     @staticmethod
-    def create_hexagonal_topology(toroidal: bool = False, **kwargs) -> HexagonalTopology:
+    def create_hexagonal_topology(**kwargs) -> HexagonalTopology:
         """
         Create hexagonal grid topology with specified parameters
         
         Args:
-            toroidal: Whether to use toroidal (wrap-around) topology
             **kwargs: Hexagonal topology parameters
             
         Returns:
@@ -210,8 +208,11 @@ class TopologyFactory:
         initialization_method = kwargs.get('initialization_method', 'random')
         seed = kwargs.get('seed', None)
         verbose = kwargs.get('verbose', False)
-        
-        topology_type = "toroidal" if toroidal else "planar"
+        topology_type = kwargs.get('topology_variant', 'planar')
+        if topology_type not in {"planar", "toroidal"}:
+            raise ValueError(
+                f"Invalid topology variant: {topology_type}. Must be one of ['planar', 'toroidal']"
+            )
         
         return HexagonalTopology(
             grid_size=grid_size,
@@ -323,7 +324,7 @@ class TopologyFactory:
             raise ValueError("input_dim must be positive")
         
         # Topology-specific validation
-        if topology_type in ["grid", "rectangular", "planar", "toroidal"]:
+        if topology_type == "grid":
             if hasattr(params, 'topology_config') and hasattr(params.topology_config, 'grid_size') and params.topology_config.grid_size <= 0:
                 raise ValueError("grid_size must be positive")
         

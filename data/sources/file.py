@@ -60,7 +60,12 @@ class FileDataSource(DataSource):
                 shape = getattr(z, "shape", None)
                 if not shape:
                     raise ValueError(f"Zarr store has no shape: {self.file_path}")
-                self._shape = shape if len(shape) == 2 else (shape[0], 1)
+                if len(shape) != 2:
+                    raise ValueError(
+                        f"Zarr store must be 2D for FloatSOM training, got shape {shape}: "
+                        f"{self.file_path}"
+                    )
+                self._shape = shape
                 self._data = z
                 self._format = "zarr"
                 return

@@ -289,6 +289,23 @@ class TestFileDataSource:
         source = DataSourceFactory.create(str(store_path))
         assert source.get_shape() == (64, 3)
 
+    def test_zarr_store_rejects_non_2d_arrays(self, tmp_path):
+        """Zarr inputs must already be explicit samples x features matrices."""
+        zarr = pytest.importorskip("zarr")
+        store_path = tmp_path / "test_cube.zarr"
+        z = zarr.open_array(
+            str(store_path),
+            mode="w",
+            shape=(4, 5, 3),
+            chunks=(2, 5, 3),
+            dtype="float32",
+        )
+        z[:] = np.random.rand(4, 5, 3).astype(np.float32)
+
+        source = DataSourceFactory.create(str(store_path))
+        with pytest.raises(ValueError, match="Zarr store must be 2D"):
+            source.get_shape()
+
     def test_fast_array_store_loading(self, tmp_path):
         """Should load FastArrayStore directories correctly."""
         from floatsom.data.fast_array_store import FastArrayStore
