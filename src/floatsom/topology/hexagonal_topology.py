@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Tuple, Optional, Union
 
 logger = logging.getLogger(__name__)
 
-from .som_topology import SOMTopology
+from .som_topology import SOMTopology, validate_initialization_request
 from .pca_initialization import pca_weights_init, pca_sampling_init, pca_sampling_init_snake, pca_density_init
 from .utils import iter_chunk_ranges
 
@@ -97,6 +97,7 @@ class HexagonalTopology(SOMTopology):
         """
         if self.verbose:
             logger.info(f"Initializing {self.name} grid with {self.total_nodes} nodes, input dim {self.input_dim}")
+        validate_initialization_request(self.initialization_method, data)
         
         total_nodes = self.total_nodes
         

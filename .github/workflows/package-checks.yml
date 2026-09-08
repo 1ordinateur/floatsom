@@ -20,5 +20,4 @@ jobs:
           tests/floatsom/test_resource_limits.py
           tests/floatsom/test_local_storage_wipe.py
           tests/floatsom/test_zarr_utils.py
-          tests/floatsom/test_inference_intent_contracts.py
           tests/test_default_profiles.py

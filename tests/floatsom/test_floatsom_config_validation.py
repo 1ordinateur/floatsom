@@ -42,14 +42,6 @@ def test_named_profile_selection_and_explicit_overrides(profile, initialization)
 class TestInvalidConfigurationRejection:
     """Test that invalid configurations raise appropriate errors."""
 
-    def test_whole_chunk_random_defaults_off(self):
-        params = FloatSOMParams(
-            input_dim=10,
-            processing_config=ProcessingConfig(chunk_size=1000),
-        )
-
-        assert params.sampling_config.whole_chunk_random is False
-
     def test_whole_chunk_random_requires_random_sampling(self):
         with pytest.raises(ValueError, match="whole_chunk_random requires sampling_config.method='random'"):
             FloatSOMParams(
@@ -421,7 +413,7 @@ class TestProcessingMethodValidation:
 
     def test_valid_processing_methods(self):
         """All valid processing methods should be accepted."""
-        valid_methods = ["batch", "colors", "serial", "minisom"]
+        valid_methods = ["batch", "colors", "minisom"]
 
         for method in valid_methods:
             config_kwargs = {"method": method, "chunk_size": 1000}
@@ -450,6 +442,18 @@ class TestProcessingMethodValidation:
                     method="invalid_processing",
                     chunk_size=1000
                 )
+            )
+
+
+class TestInitializationMethodValidation:
+    """Test centralized initialization method validation."""
+
+    def test_invalid_initialization_method_rejected_after_defaults(self):
+        with pytest.raises(ValueError, match="Invalid initialization_method"):
+            FloatSOMParams(
+                input_dim=10,
+                initialization_method="principal_components",
+                processing_config=ProcessingConfig(chunk_size=1000),
             )
 
 

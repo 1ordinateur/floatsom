@@ -7,6 +7,22 @@ from typing import Dict, Optional, Tuple, List, Union
 import cupy as cp
 import numpy as np
 
+VALID_INITIALIZATION_METHODS = {"random", "pca", "pca_sampling", "pca_sampling_snake", "pca_density"}
+PCA_INITIALIZATION_METHODS = {"pca", "pca_sampling", "pca_sampling_snake", "pca_density"}
+
+
+def validate_initialization_request(initialization_method: str, data: Optional[cp.ndarray]) -> None:
+    """Validate topology weight initialization before any random path can run."""
+    if initialization_method not in VALID_INITIALIZATION_METHODS:
+        raise ValueError(
+            f"Invalid initialization_method: {initialization_method}. "
+            f"Must be one of {sorted(VALID_INITIALIZATION_METHODS)}"
+        )
+    if initialization_method in PCA_INITIALIZATION_METHODS and data is None:
+        raise ValueError(
+            f"initialization_method='{initialization_method}' requires initialization data."
+        )
+
 
 class SOMTopology(ABC):
     """

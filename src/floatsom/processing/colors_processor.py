@@ -154,7 +154,7 @@ class ColorsProcessor(ProcessingMethod):
         if isinstance(samples, str):
             raise ValueError(
                 "File path provided but ColorsProcessor only supports in-memory data. "
-                "Use ProcessorFactory with ray_config for GDS file streaming support."
+                "Use ProcessorFactory with ray_config for Ray Pathway file streaming support."
             )
         
         # Delegate to optimized full iteration processing

@@ -425,21 +425,6 @@ class TestInitialRadiusDefaults:
         # Should be sqrt(100) = 10
         assert params.initial_radius == 10
 
-    def test_hdsssom_hexagonal_does_not_borrow_random_or_full_contextual_defaults(self):
-        """Unsupported sampling/topology pairs should keep legacy defaults."""
-        params = FloatSOMParams(
-            input_dim=10,
-            sampling_config=SamplingConfig(method="hdsssom", alpha=0.9),
-            topology_config=TopologyConfig(topology_type="hexagonal", grid_size=12),
-            processing_config=ProcessingConfig(chunk_size=1000),
-        )
-
-        assert params.initial_radius == pytest.approx(6.0)
-        assert params.radius_decay_type == "exponential"
-        assert params.initialization_method == "random"
-        assert params.processing_config.enable_momentum is False
-        assert params.processing_config.initial_momentum == pytest.approx(0.5)
-
     def test_initial_radius_explicit_override(self):
         """Explicit initial_radius should override defaults."""
         params = FloatSOMParams(

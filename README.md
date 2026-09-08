@@ -86,7 +86,7 @@ The full suite requires CUDA; Ray and multi-GPU cases additionally need the
 corresponding resources. A CPU-only environment can install `'.[dev]'` and run:
 
 ```bash
-python -m pytest tests/floatsom/test_resource_limits.py tests/floatsom/test_local_storage_wipe.py tests/floatsom/test_zarr_utils.py tests/floatsom/test_inference_intent_contracts.py
+python -m pytest tests/floatsom/test_resource_limits.py tests/floatsom/test_local_storage_wipe.py tests/floatsom/test_zarr_utils.py
 ```
 
 CI builds and checks the wheel and runs this CPU subset. It does not validate

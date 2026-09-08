@@ -132,7 +132,7 @@ class FloatSOM(InferenceMixin):
             if self.verbose:
                 logger.warning(f"Training interrupted at iteration {self.current_iteration}")
             perf_finalize_start = time.perf_counter()
-            final_stats = self._finalize_training(training_stats, start_time)
+            final_stats = self._cleanup_after_training_failure(training_stats)
             perf_finalize_end = time.perf_counter()
             self._attach_training_timing(
                 final_stats,
@@ -144,22 +144,11 @@ class FloatSOM(InferenceMixin):
                 perf_finalize_start=perf_finalize_start,
                 perf_finalize_end=perf_finalize_end,
             )
-            return final_stats
+            raise
         except Exception:
             perf_iter_end = time.perf_counter()
             perf_finalize_start = time.perf_counter()
-            final_stats = training_stats
-            finalize_error = None
-            try:
-                # Preserve the original training exception by avoiding a best-effort
-                # final weight fetch when iteration processing has already failed.
-                final_stats = self._finalize_training(
-                    training_stats,
-                    start_time,
-                    fetch_final_weights=False,
-                )
-            except Exception as exc:
-                finalize_error = exc
+            final_stats = self._cleanup_after_training_failure(training_stats)
             perf_finalize_end = time.perf_counter()
             self._attach_training_timing(
                 final_stats,
@@ -171,11 +160,6 @@ class FloatSOM(InferenceMixin):
                 perf_finalize_start=perf_finalize_start,
                 perf_finalize_end=perf_finalize_end,
             )
-            if finalize_error is not None:
-                logger.warning(
-                    "Best-effort cleanup after training failure raised an additional exception: %s",
-                    finalize_error,
-                )
             raise
 
         perf_finalize_start = time.perf_counter()
@@ -495,7 +479,10 @@ class FloatSOM(InferenceMixin):
         if self.reform_grid and self.topology.name not in ['grid', 'hexagonal']:
             if self.verbose:
                 logger.info(f"Reforming {self.topology.name} topology to {self.reform_grid_type} grid...")
-            self.reform_to_grid(grid_type=self.reform_grid_type)
+            self.reform_to_grid(
+                grid_type=self.reform_grid_type,
+                delaunay_backend=self.params.reform_delaunay_backend,
+            )
             training_stats['topology_reformed'] = True
             training_stats['reformed_to'] = self.reform_grid_type
         
@@ -507,6 +494,36 @@ class FloatSOM(InferenceMixin):
             logger.info(f"Training completed: {training_stats['iterations_completed']} iterations, "
                         f"{training_stats['training_time']:.2f}s")
         
+        return training_stats
+
+    def _cleanup_after_training_failure(self, training_stats: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean up resources after interrupted or failed training without marking trained."""
+        self.is_trained = False
+
+        cleanup_errors = []
+        processor_cleanup = getattr(self.processor, "cleanup", None)
+        if callable(processor_cleanup):
+            try:
+                processor_cleanup()
+            except Exception as exc:
+                cleanup_errors.append(f"processor cleanup failed: {exc}")
+        elif hasattr(self.processor, "worker_manager"):
+            try:
+                self.processor.worker_manager.cleanup()
+            except Exception as exc:
+                cleanup_errors.append(f"worker manager cleanup failed: {exc}")
+
+        if hasattr(self, "data_source"):
+            try:
+                self.data_source.cleanup()
+            except Exception as exc:
+                cleanup_errors.append(f"data source cleanup failed: {exc}")
+
+        if cleanup_errors:
+            logger.warning(
+                "Cleanup after failed training raised additional errors: %s",
+                "; ".join(cleanup_errors),
+            )
         return training_stats
     
     def predict(self, data: Union[np.ndarray, cp.ndarray]) -> Union[np.ndarray, cp.ndarray]:
@@ -858,7 +875,12 @@ class FloatSOM(InferenceMixin):
         
         return (iteration > min_iterations and weight_change < convergence_threshold)
     
-    def reform_to_grid(self, grid_type: str = 'regular', chunk_size: int = 1000) -> None:
+    def reform_to_grid(
+        self,
+        grid_type: str = 'regular',
+        chunk_size: int = 1000,
+        delaunay_backend: Optional[str] = None,
+    ) -> None:
         """
         Reform current topology to grid structure post-training.
         Only works for non-grid topologies (e.g., MST).
@@ -879,10 +901,21 @@ class FloatSOM(InferenceMixin):
         from ..topology.grid_assignment import RegularGridAssigner, HexagonalGridAssigner
         
         # Select appropriate assigner
+        resolved_delaunay_backend = (
+            delaunay_backend
+            if delaunay_backend is not None
+            else self.params.reform_delaunay_backend
+        )
         if grid_type == 'regular':
-            assigner = RegularGridAssigner(chunk_size=chunk_size)
+            assigner = RegularGridAssigner(
+                chunk_size=chunk_size,
+                delaunay_backend=resolved_delaunay_backend,
+            )
         elif grid_type == 'hexagonal':
-            assigner = HexagonalGridAssigner(chunk_size=chunk_size)
+            assigner = HexagonalGridAssigner(
+                chunk_size=chunk_size,
+                delaunay_backend=resolved_delaunay_backend,
+            )
         else:
             raise ValueError(f"Unknown grid type: {grid_type}")
         

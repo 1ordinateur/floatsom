@@ -60,7 +60,12 @@ class FileDataSource(DataSource):
                 shape = getattr(z, "shape", None)
                 if not shape:
                     raise ValueError(f"Zarr store has no shape: {self.file_path}")
-                self._shape = shape if len(shape) == 2 else (shape[0], 1)
+                if len(shape) != 2:
+                    raise ValueError(
+                        f"Zarr store must be 2D for FloatSOM training, got shape {shape}: "
+                        f"{self.file_path}"
+                    )
+                self._shape = shape
                 self._data = z
                 self._format = "zarr"
                 return
@@ -80,7 +85,7 @@ class FileDataSource(DataSource):
 
             suffix = self.file_path.suffix.lower()
             if suffix == ".npy":
-                data = np.load(str(self.file_path))
+                data = np.load(str(self.file_path), allow_pickle=False)
                 if len(data.shape) == 1:
                     data = data.reshape(-1, 1)
                 self._shape = data.shape
@@ -89,8 +94,15 @@ class FileDataSource(DataSource):
                 return
 
             if suffix == ".npz":
-                npz = np.load(str(self.file_path))
-                data = npz[npz.files[0]]
+                with np.load(str(self.file_path), allow_pickle=False) as npz:
+                    if not npz.files:
+                        raise ValueError(f".npz archive contains no arrays: {self.file_path}")
+                    if len(npz.files) != 1:
+                        raise ValueError(
+                            f".npz archive {self.file_path} contains multiple arrays "
+                            f"({', '.join(npz.files)}). Use an explicit key-aware loader."
+                        )
+                    data = np.asarray(npz[npz.files[0]])
                 if len(data.shape) == 1:
                     data = data.reshape(-1, 1)
                 self._shape = data.shape
@@ -130,59 +142,79 @@ class FileDataSource(DataSource):
         self._ensure_data_loaded()
         return self._shape
     
-    def get_initialization_sample(self, 
-                                 max_samples: Optional[int] = None) -> cp.ndarray:
+    def get_initialization_sample(
+        self,
+        max_samples: Optional[int] = None,
+        *,
+        use_gpu: bool = True,
+    ) -> Union[np.ndarray, cp.ndarray]:
         """
         Load sample for initialization, optimized for GPU memory
         
         Args:
             max_samples: Maximum samples to load
+            use_gpu: Whether to return a CuPy array (True) or NumPy array (False)
         Returns:
             Sample data for initialization
         """
         self._ensure_data_loaded()
         n_samples, n_features = self._shape
-        
-        if max_samples is None:
-            # Calculate maximum safe samples for GPU
-            device = cp.cuda.Device()
-            free_mem = device.mem_info[0]
-            
-            # Calculate memory needed per sample
-            bytes_per_sample = n_features * 4  # float32
-            
-            # Use safety factor for PCA computation overhead
-            safety_factor = 0.3
-            max_bytes_for_data = free_mem * safety_factor
-            max_samples = min(
-                int(max_bytes_for_data / bytes_per_sample),
-                n_samples
-            )
-            
-            logger.info(f"Loading {max_samples:,} samples for initialization "
-                       f"({max_samples * bytes_per_sample / (1024**3):.2f} GB)")
+
+        validated_max_samples = self._validate_max_samples(max_samples)
+        if validated_max_samples is None:
+            if use_gpu:
+                # Calculate maximum safe samples for GPU
+                device = cp.cuda.Device()
+                free_mem = device.mem_info[0]
+
+                # Calculate memory needed per sample
+                bytes_per_sample = n_features * 4  # float32
+
+                # Use safety factor for PCA computation overhead
+                safety_factor = 0.3
+                max_bytes_for_data = free_mem * safety_factor
+                validated_max_samples = min(
+                    int(max_bytes_for_data / bytes_per_sample),
+                    n_samples
+                )
+                validated_max_samples = max(1, validated_max_samples)
+
+                logger.info(
+                    f"Loading {validated_max_samples:,} samples for initialization "
+                    f"({validated_max_samples * bytes_per_sample / (1024**3):.2f} GB)"
+                )
+            else:
+                validated_max_samples = n_samples
         else:
-            max_samples = min(max_samples, n_samples)
+            validated_max_samples = min(validated_max_samples, n_samples)
         
-        sample_data = self._data[:max_samples]
+        sample_data = self._data[:validated_max_samples]
         
         # Ensure numpy array
         if not isinstance(sample_data, np.ndarray):
-            sample_data = np.array(sample_data)
+            sample_data = np.asarray(sample_data)
         
-        return cp.asarray(sample_data)
+        if use_gpu:
+            return cp.asarray(sample_data)
+        return np.asarray(sample_data)
     
-    def iterate_chunks(self, 
-                      chunk_size: int) -> Iterator[cp.ndarray]:
+    def iterate_chunks(
+        self,
+        chunk_size: int,
+        *,
+        use_gpu: bool = True,
+    ) -> Iterator[Union[np.ndarray, cp.ndarray]]:
         """
         Stream chunks from file
         
         Args:
             chunk_size: Number of samples per chunk
+            use_gpu: Whether to yield CuPy arrays (True) or NumPy arrays (False)
         Yields:
             Data chunks from file
         """
         self._ensure_data_loaded()
+        chunk_size = self._validate_chunk_size(chunk_size)
         n_samples = self._shape[0]
         
         # Calculate number of chunks
@@ -196,10 +228,13 @@ class FileDataSource(DataSource):
             
             # Ensure numpy array
             if not isinstance(chunk_data, np.ndarray):
-                chunk_data = np.array(chunk_data)
-            
-            yield cp.asarray(chunk_data)
-            cp.get_default_memory_pool().free_all_blocks()
+                chunk_data = np.asarray(chunk_data)
+
+            if use_gpu:
+                yield cp.asarray(chunk_data)
+                cp.get_default_memory_pool().free_all_blocks()
+            else:
+                yield np.asarray(chunk_data)
     
     def get_reference(self) -> str:
         """

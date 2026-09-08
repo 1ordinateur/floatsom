@@ -2,6 +2,7 @@
 Relative Neighborhood Graph (RNG) topology for FloatSOM.
 """
 
+import logging
 from typing import Callable, List, Optional, Tuple
 
 import cupy as cp
@@ -179,6 +180,10 @@ class RNGTopology(MSTTopology):
     already be connected; the MST repair path is kept only as a defensive guard
     for pathological numerical inputs.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._logger = logging.getLogger(__name__)
 
     @property
     def name(self) -> str:

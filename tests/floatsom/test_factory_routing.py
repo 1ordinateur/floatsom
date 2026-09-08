@@ -7,12 +7,15 @@ processor, and topology classes based on configuration.
 
 import pytest
 import warnings
+import numpy as np
+from types import SimpleNamespace
 from floatsom.floatsom_params import (
     FloatSOMParams,
     SamplingConfig,
     ProcessingConfig,
     TopologyConfig,
 )
+from floatsom.base.floatsom import FloatSOM
 from floatsom.base.floatsom_factories import create_floatsom
 
 # Import selector classes
@@ -23,7 +26,6 @@ from floatsom.sampling.hdsssom_selector import HDSSSOMSelector
 # Import processor classes
 from floatsom.processing.batch_processor import BatchProcessor
 from floatsom.processing.colors_processor import ColorsProcessor
-from floatsom.processing.serial_processor import SerialProcessor
 
 # Import topology classes
 from floatsom.topology.grid_topology import GridTopology
@@ -131,19 +133,6 @@ class TestProcessorFactoryRouting:
 
             som = create_floatsom(params)
             assert isinstance(som.processor, ColorsProcessor)
-
-    def test_serial_processing_creates_serial_processor(self):
-        """Serial processing method should create SerialProcessor."""
-        params = FloatSOMParams(
-            input_dim=10,
-            processing_config=ProcessingConfig(
-                method="serial",
-                chunk_size=1000
-            )
-        )
-
-        som = create_floatsom(params)
-        assert isinstance(som.processor, SerialProcessor)
 
     def test_minisom_processing_creates_minisom_adapter(self):
         """MiniSOM processing method should create MiniSOMAdapter."""
@@ -309,6 +298,22 @@ class TestTopologyFactoryRouting:
 
         assert TopologyFactory.validate_topology_params("rng", params) is True
 
+    def test_pca_initialization_requires_data(self):
+        """PCA-style initialization should not silently fall back to random weights."""
+        topology = GridTopology(
+            grid_size=4,
+            input_dim=3,
+            initialization_method="pca_sampling",
+        )
+
+        with pytest.raises(ValueError, match="requires initialization data"):
+            topology.initialize_weights(None)
+
+    def test_factory_rejects_variant_as_topology_type(self):
+        """Planar/toroidal are topology_variant values, not topology types."""
+        with pytest.raises(ValueError, match="Unknown topology type"):
+            TopologyFactory.create_topology("toroidal", input_dim=3)
+
 
 class TestCombinedFactoryRouting:
     """Test factory routing for combined selector + processor + topology."""
@@ -316,9 +321,9 @@ class TestCombinedFactoryRouting:
     @pytest.mark.parametrize("sampling,processor,topology", [
         ("full", "batch", "grid"),
         ("random", "colors", "hexagonal"),
-        ("hdsssom", "serial", "mst"),
-        ("hdsssom", "serial", "rng"),
-        ("full", "serial", "hexagonal"),
+        ("hdsssom", "batch", "mst"),
+        ("hdsssom", "batch", "rng"),
+        ("full", "batch", "hexagonal"),
         ("random", "batch", "mst"),
         ("random", "batch", "rng"),
     ])
@@ -365,8 +370,6 @@ class TestCombinedFactoryRouting:
                 assert isinstance(som.processor, BatchProcessor)
             elif processor == "colors":
                 assert isinstance(som.processor, ColorsProcessor)
-            elif processor == "serial":
-                assert isinstance(som.processor, SerialProcessor)
 
             # Verify correct topology
             if topology == "grid":
@@ -547,3 +550,99 @@ class TestFactoryArchitectureSummary:
         assert "Hexagonal" in summary  # Topology type
         assert "toroidal" in summary  # Topology variant
         assert "cosine" in summary  # Distance metric
+
+
+class TestTrainingInterruptHandling:
+    """Test interruption cleanup behavior without running GPU training."""
+
+    def test_keyboard_interrupt_cleans_up_and_reraises(self, monkeypatch):
+        cleanup_state = {"processor": False, "data_source": False}
+
+        class DummyProcessor:
+            def cleanup(self):
+                cleanup_state["processor"] = True
+
+        class DummyDataSource:
+            def cleanup(self):
+                cleanup_state["data_source"] = True
+
+        params = SimpleNamespace(
+            processing_config=SimpleNamespace(
+                enable_momentum=False,
+                enable_adaptive_momentum=False,
+            ),
+            verbose=False,
+            reform_grid=False,
+            reform_grid_type="regular",
+            reform_delaunay_backend="cupyx",
+        )
+        som = FloatSOM(
+            selector=object(),
+            processor=DummyProcessor(),
+            topology=SimpleNamespace(name="dummy"),
+            params=params,
+        )
+        data_source = DummyDataSource()
+
+        def fake_setup_training(_data_input):
+            som.data_source = data_source
+            return data_source, {"total_iterations": 1}
+
+        monkeypatch.setattr(som, "_setup_training", fake_setup_training)
+
+        def raise_keyboard_interrupt(_data_source, _schedules, _training_stats):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(som, "_execute_training_loop", raise_keyboard_interrupt)
+
+        with pytest.raises(KeyboardInterrupt):
+            som.train(np.zeros((1, 1), dtype=np.float32))
+
+        assert cleanup_state == {"processor": True, "data_source": True}
+        assert som.is_trained is False
+
+    def test_training_exception_cleans_up_reraises_and_leaves_untrained(self, monkeypatch):
+        cleanup_state = {"processor": False, "data_source": False}
+
+        class DummyProcessor:
+            def cleanup(self):
+                cleanup_state["processor"] = True
+
+        class DummyDataSource:
+            def cleanup(self):
+                cleanup_state["data_source"] = True
+
+        params = SimpleNamespace(
+            processing_config=SimpleNamespace(
+                enable_momentum=False,
+                enable_adaptive_momentum=False,
+            ),
+            verbose=False,
+            reform_grid=False,
+            reform_grid_type="regular",
+            reform_delaunay_backend="cupyx",
+        )
+        som = FloatSOM(
+            selector=object(),
+            processor=DummyProcessor(),
+            topology=SimpleNamespace(name="dummy"),
+            params=params,
+        )
+        data_source = DummyDataSource()
+
+        def fake_setup_training(_data_input):
+            som.data_source = data_source
+            return data_source, {"total_iterations": 1}
+
+        monkeypatch.setattr(som, "_setup_training", fake_setup_training)
+
+        def raise_runtime_error(_data_source, _schedules, _training_stats):
+            raise RuntimeError("synthetic training failure")
+
+        monkeypatch.setattr(som, "_execute_training_loop", raise_runtime_error)
+
+        with pytest.raises(RuntimeError, match="synthetic training failure"):
+            som.train(np.zeros((1, 1), dtype=np.float32))
+
+        assert cleanup_state == {"processor": True, "data_source": True}
+        assert som.is_trained is False

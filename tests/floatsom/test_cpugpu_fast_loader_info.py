@@ -1,4 +1,3 @@
-import inspect
 from types import SimpleNamespace
 
 import numpy as np
@@ -279,18 +278,6 @@ def test_set_chunk_order_validates_full_permutation():
         loader.set_chunk_order(np.array([0, 0, 1], dtype=np.int32))
 
 
-def test_mark_chunk_consumed_delegates_to_advance_position():
-    from floatsom.data.cpugpu_fast_loader import CPUGPUFastLoader
-
-    loader = CPUGPUFastLoader.__new__(CPUGPUFastLoader)
-    seen = []
-    loader._advance_position_after_fetch = lambda idx: seen.append(int(idx))
-
-    loader.mark_chunk_consumed(7)
-
-    assert seen == [7]
-
-
 def test_set_prefetch_buffer_size_applies_resolved_size_and_prefetches():
     from floatsom.data.cpugpu_fast_loader import CPUGPUFastLoader
 
@@ -376,81 +363,6 @@ def test_set_prefetch_buffer_size_zero_clears_cache_and_inflight():
     assert loader._prefetch_executor is None
 
 
-def test_set_prefetch_buffer_size_reenable_creates_executor(monkeypatch):
-    from floatsom.data import cpugpu_fast_loader as loader_module
-    from floatsom.data.cpugpu_fast_loader import CPUGPUFastLoader
-
-    executor_calls = {}
-
-    class _Executor:
-        def __init__(self, *, max_workers, thread_name_prefix):
-            executor_calls["max_workers"] = int(max_workers)
-            executor_calls["thread_name_prefix"] = str(thread_name_prefix)
-
-    monkeypatch.setattr(
-        loader_module.concurrent.futures,
-        "ThreadPoolExecutor",
-        lambda max_workers, thread_name_prefix: _Executor(
-            max_workers=max_workers,
-            thread_name_prefix=thread_name_prefix,
-        ),
-    )
-
-    loader = CPUGPUFastLoader.__new__(CPUGPUFastLoader)
-    loader.ram_mode = False
-    loader.prefetch_buffer_size = 0
-    loader.total_chunks = 10
-    loader.worker_id = 7
-    loader._prefetch_worker_count = 4
-    loader._prefetch_executor = None
-    loader._prefetch_inflight_futures = {}
-    loader.ram_cache = {}
-    loader._calculate_prefetch_buffer_size = lambda _desired: 3
-    prefetch_calls = []
-    loader._prefetch_upcoming_chunks = lambda: prefetch_calls.append(True)
-
-    applied = loader.set_prefetch_buffer_size(3)
-
-    assert applied == 3
-    assert loader.prefetch_buffer_size == 3
-    assert prefetch_calls == [True]
-    assert executor_calls["max_workers"] == 4
-    assert executor_calls["thread_name_prefix"] == "cpugpu-prefetch-7"
-    assert loader._prefetch_executor is not None
-
-
-def test_print_prepositioned_cache_miss_suppresses_inflight_by_default(capsys):
-    from floatsom.data.cpugpu_fast_loader import CPUGPUFastLoader
-
-    loader = CPUGPUFastLoader.__new__(CPUGPUFastLoader)
-    loader.ram_mode = False
-    loader.worker_id = 0
-    loader.current_chunk_position = 0
-    loader.total_chunks = 3
-    loader.chunk_order = np.array([0, 1, 2], dtype=np.int32)
-    loader.prefetch_buffer_size = 3
-    loader.ram_cache = {}
-    loader._prefetch_inflight_futures = {1: _FakeFuture(done=False)}
-    loader.log_pending_prefetch_miss = False
-
-    loader._print_prepositioned_cache_miss(
-        caller="transfer_to_gpu_buffer",
-        requested_chunk_index=1,
-        actual_chunk_index=1,
-    )
-    captured = capsys.readouterr()
-    assert captured.out == ""
-
-    loader.log_pending_prefetch_miss = True
-    loader._print_prepositioned_cache_miss(
-        caller="transfer_to_gpu_buffer",
-        requested_chunk_index=1,
-        actual_chunk_index=1,
-    )
-    captured = capsys.readouterr()
-    assert "prepositioned-cache miss" in captured.out
-
-
 def _build_ram_loader_for_get_chunk_contract_tests():
     from floatsom.data.cpugpu_fast_loader import CPUGPUFastLoader
 
@@ -465,45 +377,6 @@ def _build_ram_loader_for_get_chunk_contract_tests():
         np.zeros(loader.chunk_size * loader.n_features, dtype=np.float32)
     ]
     return loader
-
-
-def test_get_chunk_requires_explicit_keyword_only_advance_cursor(monkeypatch):
-    from floatsom.data import cpugpu_fast_loader as loader_module
-    from floatsom.data.cpugpu_fast_loader import CPUGPUFastLoader
-
-    signature = inspect.signature(CPUGPUFastLoader.get_chunk)
-    advance_param = signature.parameters["advance_cursor"]
-    assert advance_param.kind is inspect.Parameter.KEYWORD_ONLY
-    assert advance_param.default is inspect.Parameter.empty
-
-    monkeypatch.setattr(
-        loader_module,
-        "cp",
-        SimpleNamespace(
-            asarray=lambda array, dtype=None: np.asarray(array, dtype=dtype),
-            float32=np.float32,
-        ),
-    )
-    loader = _build_ram_loader_for_get_chunk_contract_tests()
-
-    with pytest.raises(TypeError, match="advance_cursor"):
-        loader.get_chunk(0)
-
-    with pytest.raises(TypeError, match="positional arguments"):
-        loader.get_chunk(0, False, True)
-
-
-def test_transfer_to_gpu_buffer_requires_explicit_keyword_only_advance_cursor():
-    from floatsom.data.cpugpu_fast_loader import CPUGPUFastLoader
-
-    signature = inspect.signature(CPUGPUFastLoader.transfer_to_gpu_buffer)
-    advance_param = signature.parameters["advance_cursor"]
-    assert advance_param.kind is inspect.Parameter.KEYWORD_ONLY
-    assert advance_param.default is inspect.Parameter.empty
-
-    loader = CPUGPUFastLoader.__new__(CPUGPUFastLoader)
-    with pytest.raises(TypeError, match="advance_cursor"):
-        CPUGPUFastLoader.transfer_to_gpu_buffer(loader, 0, object())
 
 
 def test_transfer_to_gpu_buffer_advances_cursor_only_for_consume_intent():

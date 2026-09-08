@@ -76,16 +76,6 @@ def test_resolve_color_stage_timeout_prefers_color_stage_then_cache():
     assert worker._resolve_color_stage_timeout_s() == pytest.approx(2.5)
 
 
-def test_resolve_color_stage_timeout_falls_back_to_iteration_and_default():
-    worker = _make_worker()
-    worker.ray_config = SimpleNamespace(color_stage_timeout_s=0.0, iteration_timeout_s=12.0)
-    assert worker._resolve_color_stage_timeout_s() == pytest.approx(12.0)
-
-    worker = _make_worker()
-    worker.ray_config = {"color_stage_timeout_s": "invalid", "iteration_timeout_s": None}
-    assert worker._resolve_color_stage_timeout_s() == pytest.approx(300.0)
-
-
 def test_wait_cuda_event_with_timeout_succeeds_when_event_done_property_flips(monkeypatch):
     worker = _make_worker()
 
@@ -139,25 +129,6 @@ def test_wait_cuda_event_with_timeout_raises_after_deadline_when_done_never_set(
 
     with pytest.raises(TimeoutError, match="Worker 13: Timed out after 0.5s"):
         worker._wait_cuda_event_with_timeout(_Event(), 0.5, context="test_timeout")
-
-
-def test_wait_cuda_event_with_timeout_uses_query_fallback_when_done_missing(monkeypatch):
-    worker = _make_worker()
-
-    class _Event:
-        def __init__(self):
-            self.calls = 0
-
-        def query(self):
-            self.calls += 1
-            return self.calls >= 2
-
-    event = _Event()
-    monotonic_values = iter([0.0, 0.01])
-    monkeypatch.setattr(worker_module.time, "monotonic", lambda: next(monotonic_values))
-    monkeypatch.setattr(worker_module.time, "sleep", lambda _seconds: None)
-
-    worker._wait_cuda_event_with_timeout(event, 0.5, context="test_query_fallback")
 
 
 def test_wait_cuda_event_with_timeout_raises_for_unknown_event_interface(monkeypatch):

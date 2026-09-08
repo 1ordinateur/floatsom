@@ -1,6 +1,6 @@
 """
 Full sample selector - processes all samples (current behavior)
-Supports both in-memory arrays and file paths for GDS streaming
+Supports both in-memory arrays and file paths for Ray Pathway streaming
 """
 
 from .base_selector import SampleSelector
@@ -11,7 +11,7 @@ import numpy as np
 class FullSelector(SampleSelector):
     """
     Select all samples - maintains existing behavior for compatibility
-    When given a file path, passes it through for the processor to handle via GDS
+    When given a file path, passes it through for the processor to handle via Ray Pathway
     """
     
     def __init__(self):
@@ -54,7 +54,7 @@ class FullSelector(SampleSelector):
         """
         Return entire dataset or file path
         
-        For file paths, the processor will handle GDS streaming
+        For file paths, the processor will handle Ray Pathway streaming
         For arrays, returns the entire array (existing behavior)
         """
         # If dataset is a file path, pass it through

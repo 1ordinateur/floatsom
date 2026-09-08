@@ -10,7 +10,7 @@ from typing import Dict, List, Tuple, Optional, Union
 
 logger = logging.getLogger(__name__)
 
-from .som_topology import SOMTopology
+from .som_topology import SOMTopology, validate_initialization_request
 from .pca_initialization import pca_weights_init, pca_sampling_init, pca_sampling_init_snake, pca_density_init
 from .utils import DisjointSetUnion, iter_chunk_ranges
 
@@ -153,6 +153,7 @@ class MSTTopology(SOMTopology):
             total_iterations: Total training iterations (required for dynamic frequency)
         """
         super().__init__()  # Call parent init for reformation tracking
+        self._logger = logger
         self.num_nodes = num_nodes
         self.input_dim = input_dim
         self.mst_update_frequency = mst_update_frequency
@@ -209,6 +210,10 @@ class MSTTopology(SOMTopology):
         
         # Prepare grid coordinates used during initialization
         self._set_initial_grid()
+
+    def _topology_label(self) -> str:
+        """Return the active topology label for diagnostics."""
+        return f"{self.name} topology"
     
     @property
     def name(self) -> str:
@@ -231,7 +236,13 @@ class MSTTopology(SOMTopology):
             weights: Initialized weight vectors
         """
         if self.verbose:
-            logger.info(f"Initializing MST topology with {self.num_nodes} nodes, input dim {self.input_dim}")
+            self._logger.info(
+                "Initializing %s with %d nodes, input dim %d",
+                self._topology_label(),
+                self.num_nodes,
+                self.input_dim,
+            )
+        validate_initialization_request(self.initialization_method, data)
 
         total_nodes = self.total_nodes
         grid_shape = getattr(self, "grid_shape", (total_nodes,))
@@ -254,7 +265,10 @@ class MSTTopology(SOMTopology):
 
         if self.initialization_method == "pca" and data_for_init is not None:
             if self.verbose:
-                logger.info("Using PCA weights initialization for MST topology")
+                self._logger.info(
+                    "Using PCA weights initialization for %s",
+                    self._topology_label(),
+                )
 
             if data_for_init.size == 0:
                 raise ValueError("Data provided for PCA initialization is empty")
@@ -264,11 +278,18 @@ class MSTTopology(SOMTopology):
                 weights = weights.astype(self.xp.float32)
 
                 if self.verbose:
-                    logger.info("SUCCESS: PCA weights initialization completed for MST topology!")
+                    self._logger.info(
+                        "SUCCESS: PCA weights initialization completed for %s!",
+                        self._topology_label(),
+                    )
 
         elif self.initialization_method in ["pca_sampling", "pca_sampling_snake"] and data_for_init is not None:
             if self.verbose:
-                logger.info(f"Using {self.initialization_method} initialization for MST topology")
+                self._logger.info(
+                    "Using %s initialization for %s",
+                    self.initialization_method,
+                    self._topology_label(),
+                )
 
             if self.initialization_method == "pca_sampling":
                 weights_grid = pca_sampling_init(data_for_init, grid_shape, n_iterations=10, xp=self.xp, grid_coords=grid_coords)
@@ -279,18 +300,28 @@ class MSTTopology(SOMTopology):
             weights = weights.astype(self.xp.float32)
 
             if self.verbose:
-                logger.info(f"SUCCESS: {self.initialization_method} initialization completed for MST topology!")
+                self._logger.info(
+                    "SUCCESS: %s initialization completed for %s!",
+                    self.initialization_method,
+                    self._topology_label(),
+                )
 
         elif self.initialization_method == "pca_density" and data_for_init is not None:
             if self.verbose:
-                logger.info("Using density-based PCA initialization for MST topology")
+                self._logger.info(
+                    "Using density-based PCA initialization for %s",
+                    self._topology_label(),
+                )
 
             weights_grid = pca_density_init(data_for_init, grid_shape, xp=self.xp, verbose=self.verbose, grid_coords=grid_coords)
             weights = weights_grid.reshape(-1, self.input_dim)[:total_nodes]
             weights = weights.astype(self.xp.float32)
 
             if self.verbose:
-                logger.info("SUCCESS: density-based PCA initialization completed for MST topology!")
+                self._logger.info(
+                    "SUCCESS: density-based PCA initialization completed for %s!",
+                    self._topology_label(),
+                )
 
         else:
             weights = (self.xp.random.rand(total_nodes, self.input_dim) * 2 - 1).astype(self.xp.float32)
@@ -298,7 +329,10 @@ class MSTTopology(SOMTopology):
             norms = self.xp.maximum(norms, self.xp.float32(1e-12))
             weights = weights / norms
             if self.verbose:
-                logger.info("Using random initialization for MST topology")
+                self._logger.info(
+                    "Using random initialization for %s",
+                    self._topology_label(),
+                )
 
         # Update coordinate grid slice in case initialization grid changed
         if hasattr(self, "_initialization_coord_grid"):
@@ -350,7 +384,7 @@ class MSTTopology(SOMTopology):
     def _determine_grid_shape(self, total_nodes: int, max_slots: Optional[int] = None) -> Tuple[int, int]:
         """Determine a near-rectangular grid shape that can host all nodes."""
         if total_nodes < 1:
-            raise ValueError("MST topology requires at least one node")
+            raise ValueError(f"{self._topology_label()} requires at least one node")
 
         max_slots = max(total_nodes, max_slots) if max_slots is not None else None
         ideal_height = int(np.ceil(np.sqrt(total_nodes)))
@@ -452,20 +486,23 @@ class MSTTopology(SOMTopology):
 
         if self.verbose and should_update:
             if mode == "fixed":
-                logger.info(
-                    "Updating MST at iteration %d (fixed frequency: every %d iterations)",
+                self._logger.info(
+                    "Updating %s at iteration %d (fixed frequency: every %d iterations)",
+                    self._topology_label(),
                     iteration_number,
                     current_frequency,
                 )
             elif mode == "dynamic":
-                logger.info(
-                    "Updating MST at iteration %d (dynamic frequency: every %d iterations)",
+                self._logger.info(
+                    "Updating %s at iteration %d (dynamic frequency: every %d iterations)",
+                    self._topology_label(),
                     iteration_number,
                     current_frequency,
                 )
             else:
-                logger.info(
-                    "Updating MST at iteration %d (no frequency specified, updating every iteration)",
+                self._logger.info(
+                    "Updating %s at iteration %d (no frequency specified, updating every iteration)",
+                    self._topology_label(),
                     iteration_number,
                 )
         
@@ -535,7 +572,12 @@ class MSTTopology(SOMTopology):
         if self.verbose:
             end_time = time.time()
             num_edges = len(self.mst_edges)
-            logger.info(f"MST updated in {end_time - start_time:.3f}s with {num_edges} edges")
+            self._logger.info(
+                "%s updated in %.3fs with %d edges",
+                self._topology_label(),
+                end_time - start_time,
+                num_edges,
+            )
 
     def _build_adjacency_list(self) -> None:
         """Build adjacency list from MST edges"""
@@ -545,7 +587,9 @@ class MSTTopology(SOMTopology):
         """Return neighboring node indices for a given node."""
         if self.adjacency_list is None:
             if self.mst_edges is None:
-                raise ValueError("MST not initialized. Call update_topology first.")
+                raise ValueError(
+                    f"{self._topology_label()} not initialized. Call update_topology first."
+                )
             self._build_adjacency_list()
         return self.adjacency_list.get(int(node_idx), [])
 
@@ -555,8 +599,9 @@ class MSTTopology(SOMTopology):
         """
         self._use_cpu_storage = self.num_nodes > self._cpu_storage_threshold
         if self._use_cpu_storage and self.verbose:
-            logger.info(
-                "MST has %d nodes (>%d), computing graph distances with CPU storage",
+            self._logger.info(
+                "%s has %d nodes (>%d), computing graph distances with CPU storage",
+                self._topology_label(),
                 self.num_nodes,
                 self._cpu_storage_threshold,
             )
@@ -568,7 +613,7 @@ class MSTTopology(SOMTopology):
             target_bytes=self._fw_row_target_bytes,
         )
         if self.verbose:
-            logger.info(
+            self._logger.info(
                 "Floyd-Warshall row chunk size=%d (target_bytes=%d, override=%s)",
                 row_chunk_size,
                 self._fw_row_target_bytes,
@@ -603,7 +648,9 @@ class MSTTopology(SOMTopology):
             distance: MST hop distance
         """
         if self.graph_distances is None:
-            raise ValueError("MST not initialized. Call update_topology first.")
+            raise ValueError(
+                f"{self._topology_label()} not initialized. Call update_topology first."
+            )
 
         distance_value = self.graph_distances[node1, node2]
         if hasattr(distance_value, "get"):
@@ -624,7 +671,9 @@ class MSTTopology(SOMTopology):
             path: List of node indices forming shortest path
         """
         if self.adjacency_list is None:
-            raise ValueError("MST not initialized. Call update_topology first.")
+            raise ValueError(
+                f"{self._topology_label()} not initialized. Call update_topology first."
+            )
         
         # BFS to find shortest path
         from collections import deque
@@ -655,7 +704,10 @@ class MSTTopology(SOMTopology):
             radii_list: List of radius values
         """
         if self.verbose:
-            logger.info(f"Precomputing {self.name} topology data with radius deduplication...")
+            self._logger.info(
+                "Precomputing %s data with radius deduplication...",
+                self._topology_label(),
+            )
 
         if som_params is not None:
             processing_config = getattr(som_params, "processing_config", None)
@@ -671,8 +723,15 @@ class MSTTopology(SOMTopology):
         unique_radii, self._radius_mapping = deduplicate_radii_list(radii_list, self._radius_threshold)
         
         if self.verbose:
-            logger.info(f"Deduplicated {len(radii_list)} radii to {len(unique_radii)} unique matrices")
-            logger.info(f"Memory savings: {(1 - len(unique_radii)/len(radii_list))*100:.1f}%")
+            self._logger.info(
+                "Deduplicated %d radii to %d unique matrices",
+                len(radii_list),
+                len(unique_radii),
+            )
+            self._logger.info(
+                "Memory savings: %.1f%%",
+                (1 - len(unique_radii) / len(radii_list)) * 100,
+            )
         
         # If MST is already built (from initialization), precompute influence maps now
         if self.graph_distances is not None:
@@ -680,7 +739,7 @@ class MSTTopology(SOMTopology):
         # Otherwise, influence maps will be precomputed after MST is built in update_topology
         
         if self.verbose:
-            logger.info(f"MST topology precomputation setup complete")
+            self._logger.info("%s precomputation setup complete", self._topology_label())
     
     def get_distance_matrix_for_color_sets(self, current_iteration: int = None) -> cp.ndarray:
         """
@@ -694,7 +753,9 @@ class MSTTopology(SOMTopology):
             distance_matrix: Precomputed MST graph distance matrix between all nodes
         """
         if self.graph_distances is None:
-            raise ValueError("MST not initialized. Call update_topology with weights first.")
+            raise ValueError(
+                f"{self._topology_label()} not initialized. Call update_topology with weights first."
+            )
         
         # Convert from CPU to GPU if needed
         graph_distances = self.graph_distances
@@ -722,7 +783,9 @@ class MSTTopology(SOMTopology):
         super().get_precomputed_influence_matrix(radius, influence_function)
         
         if self.graph_distances is None:
-            raise ValueError("MST not initialized. Call update_topology with weights first.")
+            raise ValueError(
+                f"{self._topology_label()} not initialized. Call update_topology with weights first."
+            )
 
         # Lazily initialize radius mapping when direct callers skip precompute_topology_data.
         radius_key = round(float(radius), 3)
@@ -768,7 +831,9 @@ class MSTTopology(SOMTopology):
             influence_function: Type of influence function
         """
         if self.graph_distances is None:
-            raise ValueError("MST not initialized. Call update_topology with weights first.")
+            raise ValueError(
+                f"{self._topology_label()} not initialized. Call update_topology with weights first."
+            )
         
         xp = self.xp
         
@@ -837,14 +902,22 @@ class MSTTopology(SOMTopology):
         """
         if self.graph_distances is None:
             if self.verbose:
-                logger.info("MST not yet built - influence maps will be computed on-demand")
+                self._logger.info(
+                    "%s not yet built - influence maps will be computed on-demand",
+                    self._topology_label(),
+                )
             return
         
         # Only precompute the specified influence function
         influence_functions = [self.influence_function]
         
         if self.verbose:
-            logger.info(f"Precomputing {self.influence_function} MST influence maps for {len(unique_radii)} radii...")
+            self._logger.info(
+                "Precomputing %s %s influence maps for %d radii...",
+                self.influence_function,
+                self._topology_label(),
+                len(unique_radii),
+            )
         
         for radius in unique_radii:
             for func_name in influence_functions:
@@ -854,7 +927,12 @@ class MSTTopology(SOMTopology):
             total_matrices = len(self._influence_map_cache)
             matrix_size = self.num_nodes * self.num_nodes * 4  # float32
             total_memory = total_matrices * matrix_size / (1024**2)  # MB
-            logger.info(f"Precomputed {total_matrices} MST influence maps using {total_memory:.1f} MB of memory")
+            self._logger.info(
+                "Precomputed %d %s influence maps using %.1f MB of memory",
+                total_matrices,
+                self._topology_label(),
+                total_memory,
+            )
     
     def set_precomputed_radii(self, radii_list: List[float]) -> None:
         """
@@ -865,7 +943,11 @@ class MSTTopology(SOMTopology):
         """
         self.precomputed_radii = radii_list
         if self.verbose:
-            logger.info(f"MST topology received {len(radii_list)} pre-computed radii")
+            self._logger.info(
+                "%s received %d pre-computed radii",
+                self._topology_label(),
+                len(radii_list),
+            )
     
     def _calculate_influence_map(self, coord_grid: cp.ndarray, radius: float, influence_function: str) -> cp.ndarray:
         """
