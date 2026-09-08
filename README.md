@@ -96,7 +96,7 @@ GPU numerical behavior. The publication benchmarks use the separate
 ## Citation
 
 Please cite **FloatSOM: GPU Accelerated, Distributed, Topology-Flexible
-Self-Organizing Maps**, by Tony Xu, Sarah Klamt, Katherine Turner, Anne Brüstle,
+Self-Organizing Maps**, by Tony Xu, Sarah Klamt, Katharine Turner, Anne Brüstle,
 Felix Marsh-Wakefield and Givanna Putri. The accepted TMLR manuscript is available
 in the [publication repository](https://github.com/1ordinateur/floatsom-publication).
 
