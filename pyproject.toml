@@ -13,46 +13,35 @@ dependencies = [
     "scipy>=1.10.0",
     "pandas>=2.0.0",
     "ray[default]>=2.6.0",
-    "zarr>=2.16.0",
+    "zarr>=3.0.0",
     "scikit-learn>=1.3.0",
     "psutil>=5.9.0",
-    "cupy-cuda13x>=13.6.0",
-    "nvidia-nccl-cu13>=2.27.7,<3",
+    "numcodecs>=0.12.0",
+    "threadpoolctl>=3.1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/1ordinateur/floatsom"
+Repository = "https://github.com/1ordinateur/floatsom"
+Issues = "https://github.com/1ordinateur/floatsom/issues"
+Publication = "https://github.com/1ordinateur/floatsom-publication"
+
 [project.optional-dependencies]
+cuda12 = ["cupy-cuda12x>=13.6.0,<14", "nvidia-nccl-cu12>=2.27.7,<3; sys_platform == 'linux'"]
+cuda13 = ["cupy-cuda13x>=13.6.0,<14", "nvidia-nccl-cu13>=2.27.7,<3; sys_platform == 'linux'"]
+dev = ["pytest>=8", "build>=1.2"]
 minisom = [
     "minisom>=2.3.0",
 ]
 
-[tool.setuptools]
-include-package-data = true
-packages = [
-    "floatsom",
-    "floatsom.adapters",
-    "floatsom.base",
-    "floatsom.data",
-    "floatsom.evaluation",
-    "floatsom.processing",
-    "floatsom.processing.colour_operations",
-    "floatsom.processing.ray_ops",
-    "floatsom.processing.ray_ops.workers",
-    "floatsom.sampling",
-    "floatsom.topology",
-]
-
-[tool.setuptools.package-dir]
-floatsom = "."
-"floatsom.adapters" = "adapters"
-"floatsom.base" = "base"
-"floatsom.data" = "data"
-"floatsom.evaluation" = "evaluation"
-"floatsom.processing" = "processing"
-"floatsom.processing.colour_operations" = "processing/colour_operations"
-"floatsom.processing.ray_ops" = "processing/ray_ops"
-"floatsom.processing.ray_ops.workers" = "processing/ray_ops/workers"
-"floatsom.sampling" = "sampling"
-"floatsom.topology" = "topology"
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-data]
-floatsom = ["floatsom_min1000_tuned_defaults.json"]
+"floatsom.defaults" = ["profiles/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu_scaling: requires CUDA and Ray GPU resources",
+]

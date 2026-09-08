@@ -17,7 +17,7 @@ import numpy as np
 import tempfile
 from types import SimpleNamespace
 
-from tests.conftest import (
+from ..conftest import (
     requires_multi_gpu,
     requires_gpu_and_ray,
     assert_arrays_equivalent,

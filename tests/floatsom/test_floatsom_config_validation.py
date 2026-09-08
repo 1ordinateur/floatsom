@@ -17,6 +17,28 @@ from floatsom.floatsom_params import (
 from floatsom.processing.processing_params import DEFAULT_MULTI_BUFFERING_PRELOAD_BUFFERS
 
 
+@pytest.mark.parametrize("profile,initialization", [("library", "pca"), ("publication", "random")])
+def test_named_profile_selection_and_explicit_overrides(profile, initialization):
+    params = FloatSOMParams(
+        defaults_profile=profile,
+        sampling_config=SamplingConfig(method="random"),
+        topology_config=TopologyConfig(topology_type="rng"),
+        processing_config=ProcessingConfig(chunk_size=1000),
+    )
+    assert params.initialization_method == initialization
+    overridden = FloatSOMParams(
+        defaults_profile=profile,
+        initial_radius=2.4,
+        initialization_method="pca_density",
+        processing_config=ProcessingConfig(
+            chunk_size=1000, enable_momentum=False, initial_momentum=0.25),
+    )
+    assert overridden.initial_radius == 2.4
+    assert overridden.initialization_method == "pca_density"
+    assert overridden.processing_config.enable_momentum is False
+    assert overridden.processing_config.initial_momentum == 0.25
+
+
 class TestInvalidConfigurationRejection:
     """Test that invalid configurations raise appropriate errors."""
 

@@ -21,9 +21,11 @@ from floatsom.processing.processing_params import (
 )
 # Note: chunk_size must now be explicitly provided - no defaults
 
+from floatsom.defaults import profile_path, resolve_profile_defaults, validate_profile
+
 logger = logging.getLogger(__name__)
 
-_CONTEXTUAL_FLOATSOM_DEFAULTS_PATH = Path(__file__).with_name("floatsom_min1000_tuned_defaults.json")
+_CONTEXTUAL_FLOATSOM_DEFAULTS_PATH = profile_path("library")
 _CONTEXTUAL_FLOATSOM_DEFAULT_SAMPLING_KEYS = {"full", "random"}
 _CONTEXTUAL_FLOATSOM_DEFAULT_TOPOLOGY_KEYS = {"hexagonal", "mst", "rng"}
 _VALID_DECAY_TYPES = {"exponential", "linear", "sigmoid", "gaussian", "asymptotic", "fixed"}
@@ -44,85 +46,7 @@ def load_contextual_floatsom_defaults() -> Dict[str, Dict[str, Dict[str, Any]]]:
             f"Contextual FloatSOM defaults JSON is not valid JSON: {_CONTEXTUAL_FLOATSOM_DEFAULTS_PATH}"
         ) from exc
 
-    if not isinstance(payload, dict):
-        raise ValueError(
-            "Contextual FloatSOM defaults JSON must be an object of "
-            "sampling_method->topology->params mappings."
-        )
-
-    normalized: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    for raw_sampling_key, topology_map in payload.items():
-        sampling_key = str(raw_sampling_key).strip().lower()
-        if sampling_key not in _CONTEXTUAL_FLOATSOM_DEFAULT_SAMPLING_KEYS:
-            raise ValueError(
-                f"Unsupported sampling key in contextual FloatSOM defaults: '{raw_sampling_key}'. "
-                f"Supported: {sorted(_CONTEXTUAL_FLOATSOM_DEFAULT_SAMPLING_KEYS)}"
-            )
-        if not isinstance(topology_map, dict):
-            raise ValueError(
-                f"Sampling entry '{raw_sampling_key}' must map to an object of topology->params mappings."
-            )
-
-        normalized_topology_map: Dict[str, Dict[str, Any]] = {}
-        for raw_topology_key, raw_param_map in topology_map.items():
-            topology_key = str(raw_topology_key).strip().lower()
-            if topology_key not in _CONTEXTUAL_FLOATSOM_DEFAULT_TOPOLOGY_KEYS:
-                raise ValueError(
-                    f"Unsupported topology key in contextual FloatSOM defaults: '{raw_topology_key}'. "
-                    f"Supported: {sorted(_CONTEXTUAL_FLOATSOM_DEFAULT_TOPOLOGY_KEYS)}"
-                )
-            if not isinstance(raw_param_map, dict):
-                raise ValueError(
-                    f"Topology entry '{raw_sampling_key}:{raw_topology_key}' must map to an object of param->value entries."
-                )
-
-            normalized_params: Dict[str, Any] = {}
-            for raw_param_name, raw_value in raw_param_map.items():
-                param_name = str(raw_param_name).strip()
-                if param_name == "initial_radius":
-                    if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
-                        raise ValueError(
-                            f"Contextual default '{raw_sampling_key}:{raw_topology_key}:initial_radius' "
-                            f"must be numeric, got {type(raw_value).__name__}."
-                        )
-                    normalized_params["initial_radius"] = float(raw_value)
-                elif param_name == "radius_decay_type":
-                    if not isinstance(raw_value, str) or raw_value not in _VALID_DECAY_TYPES:
-                        raise ValueError(
-                            f"Contextual default '{raw_sampling_key}:{raw_topology_key}:radius_decay_type' "
-                            f"must be one of {sorted(_VALID_DECAY_TYPES)}."
-                        )
-                    normalized_params["radius_decay_type"] = raw_value
-                elif param_name == "initialization_method":
-                    if not isinstance(raw_value, str) or raw_value not in _VALID_INITIALIZATION_METHODS:
-                        raise ValueError(
-                            f"Contextual default '{raw_sampling_key}:{raw_topology_key}:initialization_method' "
-                            f"must be one of {sorted(_VALID_INITIALIZATION_METHODS)}."
-                        )
-                    normalized_params["initialization_method"] = raw_value
-                elif param_name == "use_momentum":
-                    if not isinstance(raw_value, bool):
-                        raise ValueError(
-                            f"Contextual default '{raw_sampling_key}:{raw_topology_key}:use_momentum' must be boolean."
-                        )
-                    normalized_params["enable_momentum"] = raw_value
-                elif param_name == "momentum_init":
-                    if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
-                        raise ValueError(
-                            f"Contextual default '{raw_sampling_key}:{raw_topology_key}:momentum_init' "
-                            f"must be numeric, got {type(raw_value).__name__}."
-                        )
-                    normalized_params["initial_momentum"] = float(raw_value)
-                else:
-                    raise ValueError(
-                        f"Unsupported contextual FloatSOM default key '{param_name}' "
-                        f"under '{raw_sampling_key}:{raw_topology_key}'."
-                    )
-
-            normalized_topology_map[topology_key] = normalized_params
-        normalized[sampling_key] = normalized_topology_map
-
-    return normalized
+    return validate_profile(payload)
 
 
 def resolve_contextual_floatsom_defaults(
@@ -426,13 +350,20 @@ class FloatSOMParams:
     delta_weights: Optional[Any] = None
     selector_callback: Optional[Any] = None
     bmu_scheduler: Optional[Any] = None
+
+    # Named profile fills omitted values; explicit parameters still take precedence.
+    defaults_profile: str = "library"
     
     def __post_init__(self):
         """Validate and initialize parameters"""
         is_dynamic_graph_topology = self.topology_config.topology_type in {"mst", "rng"}
-        contextual_defaults = resolve_contextual_floatsom_defaults(
-            self.sampling_config.method,
-            self.topology_config.topology_type,
+        contextual_defaults = (
+            resolve_contextual_floatsom_defaults(
+                self.sampling_config.method, self.topology_config.topology_type)
+            if self.defaults_profile == "library" else
+            resolve_profile_defaults(self.sampling_config.method,
+                                     self.topology_config.topology_type,
+                                     self.defaults_profile)
         )
 
         if is_dynamic_graph_topology:
@@ -708,12 +639,17 @@ def calculate_radius(current_iteration: int, total_iterations: int, initial_radi
                     decay_type: str, min_radius: float = 0.01, use_minisom: bool = False,
                     radius_warmup_iters: int = 0, radius_decay_factor: float = 1.0, 
                     radius_decay_type: Optional[str] = None) -> float:
-    """Calculate the current radius based on iteration and decay type
-    
-    The radius always decays from initial_radius to min_radius over the training period.
-    The radius_decay_factor controls the shape/slope of the decay curve:
-    - Higher values (e.g., 3.0) make the decay slower/gentler
-    - Lower values (e.g., 0.5) make the decay faster/steeper
+    """Calculate the current neighbourhood radius for one training iteration.
+
+    Exponential and linear decay use ``min_radius`` as their requested endpoint.
+    The XPySOM-compatible asymptotic decay intentionally ignores ``min_radius``
+    and follows ``initial_radius / (1 + 2 * iteration / total_iterations)``;
+    consequently, its final scheduled value is approximately one third of the
+    initial radius. Fixed decay keeps ``initial_radius`` unchanged.
+
+    ``radius_decay_factor`` controls only the FloatSOM-specific sigmoid and
+    Gaussian curves. Higher values make those curves slower/gentler, while
+    lower values make them faster/steeper.
     """
     import inspect
     
@@ -732,7 +668,7 @@ def calculate_radius(current_iteration: int, total_iterations: int, initial_radi
     if radius_decay_type is not None:
         decay_type = radius_decay_type
     
-    # Special handling for 'fixed' learning rate mode
+    # A fixed radius does not decay.
     if decay_type == 'fixed':
         return initial_radius
     

@@ -10,11 +10,10 @@ import warnings
 import pytest
 import numpy as np
 
-try:
+from ..conftest import GPU_AVAILABLE
+
+if GPU_AVAILABLE:
     import cupy as cp
-    GPU_AVAILABLE = True
-except ImportError:
-    GPU_AVAILABLE = False
 
 
 def pytest_configure(config):
