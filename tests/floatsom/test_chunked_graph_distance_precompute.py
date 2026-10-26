@@ -92,7 +92,7 @@ def test_precompute_fail_hard_on_gpu_oom():
 
     with patch(
         "floatsom.topology.mst_topology._run_chunked_floyd_warshall_gpu",
-        side_effect=cp.cuda.memory.OutOfMemoryError("forced oom"),
+        side_effect=cp.cuda.memory.OutOfMemoryError(1024, 0),
     ):
         with pytest.raises(cp.cuda.memory.OutOfMemoryError):
             topology._precompute_graph_distances()
@@ -105,7 +105,7 @@ def test_cpu_storage_precompute_fail_hard_on_gpu_oom():
 
     with patch(
         "floatsom.topology.mst_topology._run_chunked_floyd_warshall_gpu",
-        side_effect=cp.cuda.memory.OutOfMemoryError("forced oom"),
+        side_effect=cp.cuda.memory.OutOfMemoryError(1024, 0),
     ):
         with pytest.raises(cp.cuda.memory.OutOfMemoryError):
             topology._precompute_graph_distances()

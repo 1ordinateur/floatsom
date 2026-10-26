@@ -363,14 +363,14 @@ class TestDecayParameterCoupling:
         )
         assert params_mst.radius_decay_factor == 1.0
 
-        # Grid/hexagonal should default to 3.0
+        # Grid/hexagonal also default to 1.0 (the XPySOM default since 4bd0e35a5)
         params_grid = FloatSOMParams(
             input_dim=10,
             topology_config=TopologyConfig(topology_type="grid"),
             radius_decay_factor=None,
             processing_config=ProcessingConfig(chunk_size=1000)
         )
-        assert params_grid.radius_decay_factor == 3.0
+        assert params_grid.radius_decay_factor == 1.0
 
 
 class TestInitialRadiusDefaults:
@@ -411,9 +411,14 @@ class TestInitialRadiusDefaults:
         assert params.processing_config.initial_momentum == pytest.approx(0.5)
 
     def test_initial_radius_defaults_for_mst(self):
-        """Initial radius for MST should default to sqrt(num_nodes)."""
+        """Without a tuned default, the MST initial radius is sqrt(num_nodes).
+
+        The tuned defaults cover the "full" and "random" sampling methods
+        (docs/defaults.md), so this test uses "hdsssom".
+        """
         params = FloatSOMParams(
             input_dim=10,
+            sampling_config=SamplingConfig(method="hdsssom"),
             topology_config=TopologyConfig(
                 topology_type="mst",
                 num_nodes=100

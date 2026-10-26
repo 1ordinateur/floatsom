@@ -148,7 +148,7 @@ class TestHexagonalTopology:
         assert neighbors == 6
 
     def test_hexagonal_topology_coordinate_offset(self):
-        """Hexagonal topology should offset odd rows"""
+        """Rows with the parity of the last row get an x-offset of 0.5 (the XPySOM rule)."""
         grid_size = 5
         topology = HexagonalTopology(
             grid_size=grid_size,
@@ -161,18 +161,12 @@ class TestHexagonalTopology:
 
         coords = topology.get_coordinates()
 
-        # Check that odd rows have x-offset of 0.5
         for i in range(grid_size):
             for j in range(grid_size):
                 node_idx = i * grid_size + j
                 x_coord = float(coords[node_idx, 0])
-
-                if i % 2 == 1:
-                    # Odd row should have offset
-                    expected_x = j + 0.5
-                else:
-                    # Even row should not have offset
-                    expected_x = float(j)
+                offset = 0.5 if i % 2 == (grid_size - 1) % 2 else 0.0
+                expected_x = j + offset
 
                 assert abs(x_coord - expected_x) < 0.01
 

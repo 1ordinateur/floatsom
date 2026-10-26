@@ -8,7 +8,12 @@ import cupy as cp
 import numpy as np
 
 from floatsom.floatsom_params import FloatSOMParams, ProcessingConfig, TopologyConfig
-from floatsom.topology.rng_topology import RNGTopology, calculate_rng_cpu, calculate_rng_gpu
+from floatsom.topology.rng_topology import (
+    RNGTopology,
+    _connect_components_with_mst,
+    calculate_rng_cpu,
+    calculate_rng_gpu,
+)
 from floatsom.topology.topology_factory import create_topology
 
 
@@ -59,8 +64,8 @@ def test_calculate_rng_cpu_uses_strict_inequality():
     assert set(calculate_rng_cpu(distances)) == {(0, 1), (0, 2), (1, 2)}
 
 
-def test_calculate_rng_cpu_repairs_pathological_disconnected_distance_matrix():
-    """Fallback is a defensive guard for non-Euclidean/pathological inputs."""
+def test_calculate_rng_cpu_keeps_the_mst_edges_of_a_pathological_matrix():
+    """A strict-lune RNG of a finite symmetric matrix contains an MST, so it is connected."""
     distances = np.asarray(
         [
             [0.0, 1.0, 5.0, 8.0],
@@ -74,9 +79,26 @@ def test_calculate_rng_cpu_repairs_pathological_disconnected_distance_matrix():
     raw_edges = calculate_rng_cpu(distances, ensure_connected=False)
     repaired_edges = calculate_rng_cpu(distances, ensure_connected=True)
 
-    assert _reachable_node_count(raw_edges, 4) == 2
-    assert _reachable_node_count(repaired_edges, 4) == 4
-    assert set(raw_edges) == {(0, 1), (2, 3)}
+    assert set(raw_edges) == {(0, 1), (0, 2), (1, 3), (2, 3)}
+    assert set(repaired_edges) == set(raw_edges)
+
+
+def test_connect_components_with_mst_repairs_disconnected_edges():
+    """The defensive repair connects the components with the shortest links."""
+    distances = np.asarray(
+        [
+            [0.0, 1.0, 5.0, 8.0],
+            [1.0, 0.0, 8.0, 5.0],
+            [5.0, 8.0, 0.0, 1.0],
+            [8.0, 5.0, 1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+
+    repaired = _connect_components_with_mst(4, [(0, 1), (2, 3)], lambda: distances)
+
+    assert _reachable_node_count(repaired, 4) == 4
+    assert {(0, 1), (2, 3)} <= {tuple(sorted(edge)) for edge in repaired}
 
 
 def test_rng_topology_initialization_builds_graph_state():
