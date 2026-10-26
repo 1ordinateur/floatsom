@@ -2975,8 +2975,11 @@ RealType*           coords
 }
 """
 
+# hipRTC does not define NULL. NVRTC does, so this guard has no effect on CUDA.
+NULL_GUARD = "#ifndef NULL\n#define NULL 0\n#endif\n"
+
 DELAUNAY_MODULE = cupy.RawModule(
-    code=KERNEL_DIVISION, options=('-std=c++11', '-w',),
+    code=NULL_GUARD + KERNEL_DIVISION, options=('-std=c++11', '-w',),
     name_expressions=['kerMakeFirstTri', 'kerInitPointLocationFast',
                       'kerInitPointLocationExact', 'kerVoteForPoint',
                       'kerPickWinnerPoint', 'kerShiftValues<Tri>',

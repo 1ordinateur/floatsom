@@ -1,4 +1,7 @@
 """Shared test helpers; no dependency on the parent PIBLO repository."""
+# Import floatsom first: on an AMD host it sets the GPU visibility variables
+# before CuPy starts HIP and before a test file imports Ray.
+import floatsom  # noqa: F401
 import importlib.util
 import os
 

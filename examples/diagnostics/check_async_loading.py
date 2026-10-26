@@ -4,6 +4,7 @@ Test async chunk loading functionality
 """
 
 import numpy as np
+import floatsom  # noqa: F401  (sets the AMD GPU variables before Ray)
 import ray
 import time
 import logging

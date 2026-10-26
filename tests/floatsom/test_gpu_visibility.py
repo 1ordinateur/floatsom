@@ -91,6 +91,16 @@ def test_normalize_rocm_visible_devices_does_nothing_on_cuda_host(monkeypatch):
     assert env == {"ROCR_VISIBLE_DEVICES": "2,3", "CUDA_VISIBLE_DEVICES": "1"}
 
 
+def test_normalize_rocm_visible_devices_second_call_does_nothing(monkeypatch):
+    # PIBLO converts the variables first. The floatsom call then changes nothing.
+    monkeypatch.setenv(gpu_visibility.PLATFORM_ENV, "rocm")
+    env = {"ROCR_VISIBLE_DEVICES": "4,5,6", "CUDA_VISIBLE_DEVICES": "0,2"}
+    gpu_visibility.normalize_rocm_visible_devices(env)
+    first = dict(env)
+    gpu_visibility.normalize_rocm_visible_devices(env)
+    assert env == first == {"HIP_VISIBLE_DEVICES": "4,6"}
+
+
 FAKE_RAY = textwrap.dedent(
     """
     import os
