@@ -62,6 +62,10 @@ class _SnapshotProgressTracker:
 class _DummyWorkerManager:
     workers: List[_DummyWorker]
 
+    def wait_for_worker_futures(self, futures, *, phase: str, timeout_s: Optional[float] = None):
+        # The dummy remote methods return their results directly.
+        return list(futures)
+
     def get_final_weights(self):
         return np.zeros((1, 1), dtype=np.float32), None
 

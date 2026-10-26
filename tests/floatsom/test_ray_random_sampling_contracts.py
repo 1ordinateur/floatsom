@@ -262,6 +262,7 @@ def test_floatsom_iteration_skips_selector_for_file_backed_local_sampling():
         processing_config=SimpleNamespace(initial_momentum=0.0),
         store_history=False,
     )
+    som.use_momentum = False
     som.delta_weights = None
     som.weights = np.zeros((1, 1), dtype=np.float32)
     som.topology = SimpleNamespace(requires_topology_updates=lambda: False)
@@ -376,7 +377,7 @@ def test_floatsom_initialize_with_data_source_emits_whole_chunk_warning_at_real_
         precompute_topology_data=lambda params, radii: None,
     )
     som.params = SimpleNamespace(
-        sampling_config=SimpleNamespace(whole_chunk_random=True),
+        sampling_config=SimpleNamespace(whole_chunk_random=True, method="random"),
         total_iterations=1,
         initial_radius=1.0,
     )

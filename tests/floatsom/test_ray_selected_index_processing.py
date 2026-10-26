@@ -106,10 +106,11 @@ def test_batch_selected_rows_only_feed_bmu_updates_and_count_matches(monkeypatch
         weights,
         influence_matrix,
         learning_rate,
+        apply_lr_in_update,
         chunk_size,
         verbose,
     ):
-        del influence_matrix, learning_rate, chunk_size, verbose
+        del influence_matrix, learning_rate, apply_lr_in_update, chunk_size, verbose
         assert int(batch.shape[0]) == int(bmus.shape[0])
         rows = float(batch.shape[0])
         return (
@@ -138,8 +139,10 @@ def test_batch_selected_rows_only_feed_bmu_updates_and_count_matches(monkeypatch
     np.testing.assert_allclose(cp.asnumpy(influence), np.full((3,), 4.0, dtype=np.float32))
 
 
-def test_batch_selected_mode_uses_selected_denominator_and_async_overrides():
+def test_batch_selected_mode_uses_selected_denominator_and_async_overrides(monkeypatch):
     worker = _make_batch_worker()
+    # One worker: the sample-count allreduce keeps the local selected count.
+    monkeypatch.setattr(batch_module.collective, "allreduce", lambda tensor, **_kwargs: tensor)
     worker.async_mode = True
     worker._async_loader_context = {"num_chunks": 5}
     worker.async_loader = SimpleNamespace(sampling_fraction=0.25, target_rows=2)
@@ -318,7 +321,8 @@ def test_batch_worker_multi_buffered_path_applies_local_random_subsampling_after
     worker.sampling_method = "random"
     worker.sampling_fraction = 0.5
     worker.multi_buffering_enabled = True
-    
+    worker.multi_buffering_num_buffers = 2
+
     class _DummyStream:
         def __enter__(self):
             return self
@@ -331,7 +335,7 @@ def test_batch_worker_multi_buffered_path_applies_local_random_subsampling_after
 
     worker.compute_stream = _DummyStream()
     worker.get_num_chunks = lambda: 1
-    worker.load_chunk_multi_buffered = lambda _chunk_idx: (
+    worker.load_chunk_multi_buffered = lambda _chunk_idx, prefetch_indices=None: (
         cp.asarray(np.arange(12, dtype=np.float32).reshape(4, 3)),
         {"buffer_id": 0, "local_size": 3, "source": "mmap", "padded": True},
     )
