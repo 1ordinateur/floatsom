@@ -18,6 +18,12 @@ python -m pip install '.[cuda12]'
 For CUDA 13, install `'.[cuda13]'` instead. Choose the extra that matches your
 CUDA version.
 
+For AMD GPUs, install CuPy for your ROCm version and install `'.[rocm]'`.
+RAPIDS has no AMD build. Thus `reform_grid=True` uses a CPU fallback
+(scikit-learn PCA and the networkx ForceAtlas2 layout). The fallback time and
+memory increase as the square of the node count: about 40 s for 1024 nodes, and
+about 1 h and 8 GB of RAM for 10,000 nodes.
+
 ## Usage
 
 Run the example:

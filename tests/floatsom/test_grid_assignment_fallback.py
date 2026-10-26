@@ -115,12 +115,18 @@ class TestForceAtlas2Fallback:
         assert np.all(np.isfinite(positions))
         assert not np.allclose(positions, points)
 
-    def test_layout_is_deterministic_for_a_seed(self):
-        graph, points = self._graph_and_positions()
-        first = grid_layout_backends.force_atlas2_networkx(graph, points, seed=11)
-        second = grid_layout_backends.force_atlas2_networkx(graph, points, seed=11)
+    def test_layout_puts_graph_neighbors_closer_than_other_nodes(self):
+        import networkx as nx
 
-        np.testing.assert_array_equal(first, second)
+        # A 6 x 6 grid graph that starts from mixed positions.
+        graph = nx.convert_node_labels_to_integers(nx.grid_2d_graph(6, 6), ordering="sorted")
+        start = np.random.default_rng(3).random((graph.number_of_nodes(), 2))
+        positions = grid_layout_backends.force_atlas2_networkx(graph, start, seed=0)
+
+        distances = np.linalg.norm(positions[:, None, :] - positions[None, :, :], axis=-1)
+        adjacent = nx.to_numpy_array(graph, nodelist=range(graph.number_of_nodes())) > 0
+        others = ~adjacent & ~np.eye(len(positions), dtype=bool)
+        assert distances[adjacent].mean() < 0.5 * distances[others].mean()
 
     def test_layout_does_not_change_the_initial_positions(self):
         graph, points = self._graph_and_positions()

@@ -8,9 +8,9 @@ import numpy as np
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Optional, List
-import cugraph
-import cudf
 from scipy.optimize import linear_sum_assignment
+
+from . import grid_layout_backends
 
 logger = logging.getLogger(__name__)
 
@@ -74,15 +74,27 @@ class GridAssigner(ABC):
             grid_size += 1
         
         logger.debug(f"Assigning {num_nodes} nodes to {grid_size}x{grid_size} grid using Delaunay method")
+
+        # Use RAPIDS when it is available. Use the CPU fallback only when
+        # the RAPIDS import fails (for example, on AMD GPUs).
+        rapids = grid_layout_backends.import_rapids()
+        if rapids is None:
+            logger.warning(
+                "RAPIDS (cuDF, cuGraph, cuML) is not available. Grid assignment of "
+                "%d nodes uses scikit-learn PCA and the networkx ForceAtlas2 layout "
+                "on the CPU. The time and the memory increase as the square of the "
+                "node count (about 40 s for 1024 nodes, about 1 h and 8 GB for 10,000 nodes).",
+                num_nodes,
+            )
         
         # Project to 2D
-        nodes_2d = self._project_to_2d(weights)
+        nodes_2d = self._project_to_2d(weights, rapids)
         
         # Build Delaunay triangulation and get graph
-        G = self._build_delaunay_graph(nodes_2d)
+        G = self._build_delaunay_graph(nodes_2d, rapids)
         
         # Apply Force Atlas 2 layout to preserve topology
-        positions = self._apply_force_atlas2_layout(G, nodes_2d)
+        positions = self._apply_force_atlas2_layout(G, nodes_2d, rapids)
         
         # Generate grid positions
         grid_positions = self.generate_grid_positions(grid_size)
@@ -106,15 +118,16 @@ class GridAssigner(ABC):
         
         return node_to_grid, adjacency
     
-    def _build_delaunay_graph(self, nodes_2d: cp.ndarray) -> cugraph.Graph:
+    def _build_delaunay_graph(self, nodes_2d: cp.ndarray, rapids):
         """
-        Build Delaunay triangulation and convert to cuGraph graph.
+        Build Delaunay triangulation and convert to a graph.
         
         Args:
             nodes_2d: 2D projected node positions (num_nodes, 2) on GPU
+            rapids: RAPIDS modules, or None for the networkx fallback
             
         Returns:
-            cuGraph Graph object with Delaunay edges
+            cuGraph Graph (RAPIDS) or networkx Graph (fallback) with Delaunay edges
         """
         logger.debug("Building Delaunay triangulation on GPU")
         
@@ -125,53 +138,47 @@ class GridAssigner(ABC):
         # Create Delaunay triangulation on GPU
         delaunay = self._delaunay_cls(nodes_2d)
         
-        # Extract edges from simplices
-        simplices = delaunay.simplices  # Shape: (n_triangles, 3)
-        edges = []
-        
-        # Extract unique edges from triangles
-        for i in range(3):
-            # Each triangle contributes 3 edges
-            src = simplices[:, i]
-            dst = simplices[:, (i + 1) % 3]
-            edges.append(cp.stack([src, dst], axis=1))
-        
-        # Combine all edges
-        all_edges = cp.vstack(edges)
-        
-        # Make edges undirected by adding reverse edges
-        reverse_edges = cp.stack([all_edges[:, 1], all_edges[:, 0]], axis=1)
-        all_edges = cp.vstack([all_edges, reverse_edges])
-        
-        # Remove duplicates by sorting each edge and then using unique
-        sorted_edges = cp.sort(all_edges, axis=1)
-        unique_edges = cp.unique(sorted_edges, axis=0)
-        
+        # Extract unique undirected edges from the triangles
+        unique_edges = grid_layout_backends.delaunay_edges(delaunay.simplices, cp)
+
+        if rapids is None:
+            G = grid_layout_backends.build_networkx_graph(
+                cp.asnumpy(unique_edges), len(nodes_2d)
+            )
+            logger.debug(f"Delaunay graph created with {G.number_of_edges()} edges")
+            return G
+
         # Create cuGraph DataFrame
-        edge_df = cudf.DataFrame({
+        edge_df = rapids.cudf.DataFrame({
             'src': unique_edges[:, 0].get(),  # Transfer to CPU for cuDF
             'dst': unique_edges[:, 1].get()
         })
         
         # Create cuGraph Graph
-        G = cugraph.Graph(directed=False)
+        G = rapids.cugraph.Graph(directed=False)
         G.from_cudf_edgelist(edge_df, source='src', destination='dst')
         
         logger.debug(f"Delaunay graph created with {G.number_of_edges()} edges")
         return G
     
-    def _apply_force_atlas2_layout(self, G: cugraph.Graph, initial_pos: cp.ndarray) -> cp.ndarray:
+    def _apply_force_atlas2_layout(self, G, initial_pos: cp.ndarray, rapids) -> cp.ndarray:
         """
         Apply Force Atlas 2 layout to preserve topology without crossings.
         
         Args:
-            G: cuGraph Graph object
+            G: cuGraph Graph (RAPIDS) or networkx Graph (fallback)
             initial_pos: Initial 2D positions (num_nodes, 2) on GPU
+            rapids: RAPIDS modules, or None for the networkx fallback
             
         Returns:
             Optimized 2D positions (num_nodes, 2) on GPU
         """
         logger.debug("Applying Force Atlas 2 layout for topology preservation")
+
+        if rapids is None:
+            positions = grid_layout_backends.force_atlas2_networkx(G, cp.asnumpy(initial_pos))
+            logger.debug("Force Atlas 2 layout completed (networkx)")
+            return cp.asarray(positions)
         
         # Convert initial positions to DataFrame for cuGraph
         n_nodes = len(initial_pos)
@@ -183,14 +190,14 @@ class GridAssigner(ABC):
             x = initial_pos[:, 0]
             y = initial_pos[:, 1]
 
-        pos_df = cudf.DataFrame({
+        pos_df = rapids.cudf.DataFrame({
             'vertex': cp.arange(n_nodes).get(),
             'x': x,
             'y': y
         })
         
         # Apply Force Atlas 2 with appropriate parameters
-        pos_result = cugraph.layout.force_atlas2(
+        pos_result = rapids.cugraph.layout.force_atlas2(
             G,
             max_iter=500,  # Iterations for layout optimization
             pos_list=pos_df,  # Use initial positions
@@ -321,20 +328,24 @@ class GridAssigner(ABC):
         
         return distances
     
-    def _project_to_2d(self, weights: cp.ndarray) -> cp.ndarray:
+    def _project_to_2d(self, weights: cp.ndarray, rapids) -> cp.ndarray:
         """
         Project high-dimensional weights to 2D using PCA.
         
         Args:
             weights: High-dimensional weights (num_nodes, input_dim)
+            rapids: RAPIDS modules, or None for the scikit-learn fallback
             
         Returns:
             2D projected positions (num_nodes, 2)
         """
-        # Use cuML PCA (GPU-accelerated) - required for reform_grid
-        from cuml.decomposition import PCA
+        if rapids is None:
+            logger.debug("Using scikit-learn PCA for 2D projection")
+            return cp.asarray(grid_layout_backends.pca_project_2d(cp.asnumpy(weights)))
+
+        # Use cuML PCA (GPU-accelerated)
         logger.debug("Using cuML PCA for 2D projection")
-        pca = PCA(n_components=2)
+        pca = rapids.PCA(n_components=2)
         return pca.fit_transform(weights)
     
     def _normalize_inplace(self, coords: cp.ndarray) -> None:

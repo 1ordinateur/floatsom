@@ -29,7 +29,10 @@ Publication = "https://github.com/1ordinateur/floatsom-publication"
 [project.optional-dependencies]
 cuda12 = ["cupy-cuda12x>=13.6.0,<14", "nvidia-nccl-cu12>=2.27.7,<3; sys_platform == 'linux'"]
 cuda13 = ["cupy-cuda13x>=13.6.0,<14", "nvidia-nccl-cu13>=2.27.7,<3; sys_platform == 'linux'"]
-dev = ["pytest>=8", "build>=1.2"]
+dev = ["pytest>=8", "build>=1.2", "networkx>=3.4"]
+# AMD GPUs: install CuPy for ROCm separately. RAPIDS has no AMD build, so
+# reform_grid uses the networkx ForceAtlas2 fallback.
+rocm = ["networkx>=3.4"]
 minisom = [
     "minisom>=2.3.0",
 ]
