@@ -81,10 +81,10 @@ def cosine_distance_kernel(batch, weights, batch_norms, weight_norms, distances,
         batch_norm = batch_norms[sample_idx]
         weight_norm = weight_norms[node_idx]
         
-        # Avoid division by zero
-        norm_product = batch_norm * weight_norm
-        if norm_product > 1e-8:
-            cosine_sim = dot_product / norm_product
+        # Avoid division by zero. Divide by each norm: a product of two
+        # small norms can underflow, and small parallel vectors must give 0.
+        if batch_norm > 0.0 and weight_norm > 0.0:
+            cosine_sim = dot_product / batch_norm / weight_norm
             # Cosine distance = 1 - cosine_similarity
             # Clamp to [0, 2] range
             dist = 1.0 - cosine_sim
