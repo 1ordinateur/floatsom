@@ -175,6 +175,39 @@ def test_save_untrained_som_raises(tmp_path):
         som.save(tmp_path / "untrained.npz")
 
 
+def test_train_som_accepts_numpy_integer_options():
+    som = train_som(blobs(n_samples=300), grid_size=np.int64(4), iterations=np.int64(5), seed=1)
+    assert som.get_weights().shape == (16, 8)
+
+
+def test_save_load_when_input_dim_comes_from_data(tmp_path):
+    data = blobs(n_samples=400)
+    params = small_params()
+    params.input_dim = None
+    som = trained(params, data)
+    som.save(tmp_path / "no_input_dim.npz")
+    loaded = FloatSOM.load(tmp_path / "no_input_dim.npz")
+    np.testing.assert_array_equal(host(loaded.predict(data)), host(som.predict(data)))
+
+
+def test_load_of_a_ray_configured_som_gives_a_local_som(tmp_path):
+    from floatsom.floatsom_params import RayConfig
+    from floatsom.processing.batch_processor import BatchProcessor
+
+    data = blobs(n_samples=400)
+    som = trained(small_params(), data)
+    som.params.processing_config.ray_config = RayConfig(
+        chunk_size=500,
+        storage_path=str(tmp_path / "shared"),
+        local_storage_path=str(tmp_path / "local"),
+    )
+    som.save(tmp_path / "ray.npz")
+    loaded = FloatSOM.load(tmp_path / "ray.npz")
+    assert loaded.params.processing_config.ray_config is None
+    assert isinstance(loaded.processor, BatchProcessor)
+    np.testing.assert_array_equal(host(loaded.predict(data)), host(som.predict(data)))
+
+
 def test_load_rejects_a_file_that_save_did_not_write(tmp_path):
     path = tmp_path / "other.npz"
     np.savez(path, weights=np.zeros((4, 2)))

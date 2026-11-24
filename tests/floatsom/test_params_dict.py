@@ -149,3 +149,19 @@ def test_from_dict_keeps_validation_errors():
 def test_processing_config_has_a_default_chunk_size():
     config = ProcessingConfig(distance_metric="cosine")
     assert config.chunk_size == FloatSOMParams().processing_config.chunk_size
+
+
+def test_from_dict_rejects_none_for_a_required_section():
+    with pytest.raises(ValueError, match="processing_config"):
+        FloatSOMParams.from_dict({"input_dim": 3, "processing_config": None})
+
+
+def test_to_dict_converts_numpy_arrays_in_settings():
+    import numpy as np
+
+    params = FloatSOMParams(
+        input_dim=3,
+        processing_config=ProcessingConfig(influence_params={"weights": np.array([1.0, 2.0])}),
+    )
+    data = json.loads(json.dumps(params.to_dict()))
+    assert data["processing_config"]["influence_params"]["weights"] == [1.0, 2.0]
