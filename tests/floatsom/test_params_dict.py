@@ -144,3 +144,8 @@ def test_from_dict_rejects_a_non_mapping_section():
 def test_from_dict_keeps_validation_errors():
     with pytest.raises(ValueError, match="Invalid topology type"):
         FloatSOMParams.from_dict({"topology_config": {"topology_type": "triangle"}})
+
+
+def test_processing_config_has_a_default_chunk_size():
+    config = ProcessingConfig(distance_metric="cosine")
+    assert config.chunk_size == FloatSOMParams().processing_config.chunk_size
