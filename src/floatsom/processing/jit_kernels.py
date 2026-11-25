@@ -55,10 +55,14 @@ def manhattan_distance_kernel(batch, weights, distances, batch_size, num_nodes, 
     node_idx = jit.blockIdx.y * jit.blockDim.y + jit.threadIdx.y
     
     if sample_idx < batch_size and node_idx < num_nodes:
+        # cupyx JIT does not accept the abs() built-in: use negation.
         dist = 0.0
         for d in range(input_dim):
-            dist += abs(batch[sample_idx, d] - weights[node_idx, d])
-        
+            diff = batch[sample_idx, d] - weights[node_idx, d]
+            if diff < 0.0:
+                diff = -diff
+            dist += diff
+
         distances[sample_idx, node_idx] = dist
 
 
@@ -107,14 +111,17 @@ def norm_p_distance_kernel(batch, weights, distances, batch_size, num_nodes, inp
     
     if sample_idx < batch_size and node_idx < num_nodes:
         # cupyx JIT does not accept the abs() and pow() built-ins: use operators.
-        dist = 0.0
+        # A float64 sum and p make diff ** p float64, so float32 data with a large p
+        # does not overflow or underflow. (cupyx JIT gives float32 to a plain 0.0.)
+        dist = cp.float64(0.0)
+        p64 = cp.float64(p)
         for d in range(input_dim):
             diff = batch[sample_idx, d] - weights[node_idx, d]
             if diff < 0.0:
                 diff = -diff
-            dist += diff ** p
+            dist += diff ** p64
 
-        distances[sample_idx, node_idx] = dist ** (1.0 / p)
+        distances[sample_idx, node_idx] = dist ** (1.0 / p64)
 
 
 # ==================== BMU FINDING KERNELS ====================
@@ -262,7 +269,7 @@ def launch_norm_p_distance_jit(batch: cp.ndarray, weights: cp.ndarray, p: float,
     grid_y = (num_nodes + block_y - 1) // block_y
 
     norm_p_distance_kernel[(grid_x, grid_y), (block_x, block_y)](
-        batch, weights, distances, batch_size, num_nodes, input_dim, batch.dtype.type(p)
+        batch, weights, distances, batch_size, num_nodes, input_dim, float(p)
     )
 
     return distances

@@ -17,6 +17,7 @@ from .jit_kernels import (
     launch_cosine_distance_jit,
     launch_partial_updates_jit
 )
+from .processing_params import validate_norm_p
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ def calculate_distances(batch: cp.ndarray, weights: cp.ndarray,
         if 'p' not in kwargs:
             raise ValueError("norm_p distance needs the option p (distance_metric_params['p'])")
         return launch_norm_p_distance_jit(
-            batch, weights, p=float(kwargs['p']), batch_size=batch_size,
+            batch, weights, p=validate_norm_p(kwargs['p']), batch_size=batch_size,
             num_nodes=num_nodes, input_dim=input_dim)
     else:
         raise ValueError(f"Unknown distance metric: {metric}")

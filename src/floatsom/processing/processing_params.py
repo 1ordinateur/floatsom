@@ -5,6 +5,7 @@ Centralizes all processor configurations in the processing module
 
 from dataclasses import dataclass, field
 from typing import Optional, Any, List, Tuple
+import math
 import warnings
 
 import numpy as np
@@ -77,6 +78,18 @@ def validate_multi_buffering_buffers(num_buffers: int) -> int:
     if num_buffers < 0:
         raise ValueError("enable_multi_buffering must be >= 0")
     return int(num_buffers)
+
+
+def validate_norm_p(p: Any) -> float:
+    """Return p as a float. Raise ValueError if p is not a finite number >= 1."""
+    message = f"p value for norm_p distance must be >= 1, got {p!r} (norm_p needs a finite p >= 1)"
+    try:
+        value = float(p)
+    except (TypeError, ValueError):
+        raise ValueError(message) from None
+    if not (math.isfinite(value) and value >= 1.0):
+        raise ValueError(message)
+    return value
 
 
 def _validate_auto_chunk_input(input_dim: int) -> None:

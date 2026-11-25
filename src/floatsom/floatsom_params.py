@@ -17,6 +17,7 @@ from floatsom.processing.processing_params import (
     WorkerProfileConfig,
     DEFAULT_MULTI_BUFFERING_PRELOAD_BUFFERS,
     validate_multi_buffering_buffers,
+    validate_norm_p,
 )
 # Note: chunk_size must now be explicitly provided - no defaults
 
@@ -623,8 +624,8 @@ class FloatSOMParams:
         if self.processing_config.distance_metric == "norm_p":
             if "p" not in self.processing_config.distance_metric_params:
                 self.processing_config.distance_metric_params["p"] = 3.0  # Default p value
-            elif self.processing_config.distance_metric_params["p"] < 1:
-                raise ValueError("p value for norm_p distance must be >= 1")
+            else:
+                validate_norm_p(self.processing_config.distance_metric_params["p"])
         
         # Validate influence type
         valid_influence_types = ["gaussian", "bubble", "mexican_hat", "triangle"]
