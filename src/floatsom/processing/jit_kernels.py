@@ -111,17 +111,17 @@ def norm_p_distance_kernel(batch, weights, distances, batch_size, num_nodes, inp
     
     if sample_idx < batch_size and node_idx < num_nodes:
         # cupyx JIT does not accept the abs() and pow() built-ins: use operators.
-        # A float64 sum and p make diff ** p float64, so float32 data with a large p
-        # does not overflow or underflow. (cupyx JIT gives float32 to a plain 0.0.)
+        # A float64 sum and p (the launcher gives p as float64) make diff ** p float64, so
+        # float32 data with a large p does not overflow or underflow.
+        # cupyx JIT gives float32 to a plain 0.0, so cast the start value.
         dist = cp.float64(0.0)
-        p64 = cp.float64(p)
         for d in range(input_dim):
             diff = batch[sample_idx, d] - weights[node_idx, d]
             if diff < 0.0:
                 diff = -diff
-            dist += diff ** p64
+            dist += diff ** p
 
-        distances[sample_idx, node_idx] = dist ** (1.0 / p64)
+        distances[sample_idx, node_idx] = dist ** (1.0 / p)
 
 
 # ==================== BMU FINDING KERNELS ====================
@@ -269,7 +269,8 @@ def launch_norm_p_distance_jit(batch: cp.ndarray, weights: cp.ndarray, p: float,
     grid_y = (num_nodes + block_y - 1) // block_y
 
     norm_p_distance_kernel[(grid_x, grid_y), (block_x, block_y)](
-        batch, weights, distances, batch_size, num_nodes, input_dim, float(p)
+        # A NumPy float64 keeps its dtype; cupyx JIT types a Python float as float32.
+        batch, weights, distances, batch_size, num_nodes, input_dim, cp.float64(p)
     )
 
     return distances
