@@ -46,7 +46,7 @@ def train_som(
             default comes from ``suggest_grid_size(n_samples)``.
         topology: "hexagonal", "grid", "mst" or "rng".
         iterations: Number of training iterations.
-        distance_metric: "euclidean", "cosine" or "manhattan".
+        distance_metric: "euclidean", "cosine", "manhattan" or "norm_p" (Lp, p = 3).
         profile: Tuned defaults profile; see ``floatsom.PROFILE_NAMES``.
         seed: Random seed, for results that you can repeat.
         verbose: Log the training progress.

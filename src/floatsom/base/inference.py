@@ -327,7 +327,8 @@ class InferenceMixin:
             actual_size = end_idx - start_idx
             gpu_chunk = gpu_chunk[:actual_size]
 
-            bmu_indices = self.predict(gpu_chunk)
+            # The pinned host buffer holds int32; argmin gives int64 for small SOMs.
+            bmu_indices = self.predict(gpu_chunk).astype(cp.int32, copy=False)
             if use_pinned:
                 cp.cuda.runtime.memcpyAsync(
                     host_buffer.ptr,

@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from .jit_kernels import (
     launch_euclidean_distance_jit,
     launch_manhattan_distance_jit,
+    launch_norm_p_distance_jit,
     launch_cosine_distance_jit,
     launch_partial_updates_jit
 )
@@ -30,8 +31,8 @@ def calculate_distances(batch: cp.ndarray, weights: cp.ndarray,
     Args:
         batch: Input batch (batch_size, input_dim)
         weights: Weight vectors (num_nodes, input_dim)
-        metric: Distance metric ("euclidean", "cosine", "manhattan")
-        **kwargs: Additional parameters for specific metrics
+        metric: Distance metric ("euclidean", "cosine", "manhattan", "norm_p")
+        **kwargs: Additional parameters for specific metrics (epsilon for cosine, p for norm_p)
         
     Returns:
         Distance matrix (batch_size, num_nodes)
@@ -63,13 +64,19 @@ def calculate_distances(batch: cp.ndarray, weights: cp.ndarray,
         )
     elif metric == "manhattan":
         return launch_manhattan_distance_jit(
-            batch, weights, batch_size=batch_size, 
+            batch, weights, batch_size=batch_size,
+            num_nodes=num_nodes, input_dim=input_dim)
+    elif metric == "norm_p":
+        if 'p' not in kwargs:
+            raise ValueError("norm_p distance needs the option p (distance_metric_params['p'])")
+        return launch_norm_p_distance_jit(
+            batch, weights, p=float(kwargs['p']), batch_size=batch_size,
             num_nodes=num_nodes, input_dim=input_dim)
     else:
         raise ValueError(f"Unknown distance metric: {metric}")
 
 
-# Keep NormPDistance for now as it doesn't have JIT implementation yet
+# NormPDistance: an older CuPy Lp class; calculate_distances uses the JIT kernel for "norm_p".
 class NormPDistance:
     """Generalized Lp norm distance metric with configurable p."""
     
@@ -155,7 +162,7 @@ def find_bmus(batch: cp.ndarray, weights: cp.ndarray, verbose: bool = False,
         verbose: Print progress information
         return_distances: Also return distances for HDSSSOM difficulty tracking
         chunk_size: Optional chunk size for memory management (None = no chunking)
-        metric: Distance metric name ("euclidean", "cosine", "manhattan")
+        metric: Distance metric name ("euclidean", "cosine", "manhattan", "norm_p")
         **metric_kwargs: Additional parameters for the distance metric
         
     Returns:
@@ -197,7 +204,9 @@ def _find_bmus_core(batch: cp.ndarray, weights: cp.ndarray, verbose: bool = Fals
     """
     total_nodes = weights.shape[0]
     batch_size = batch.shape[0]
-    
+    # Metric options for calculate_distances; this function sets apply_sqrt itself.
+    distance_kwargs = {key: value for key, value in metric_kwargs.items() if key != 'apply_sqrt'}
+
     # Precompute batch norms once for cosine to avoid per-chunk recomputation
     batch_norms = None
     if metric == "cosine":
@@ -221,7 +230,7 @@ def _find_bmus_core(batch: cp.ndarray, weights: cp.ndarray, verbose: bool = Fals
             weight_chunk = weights[chunk_start:chunk_end]
             
             # Calculate distances for this chunk; keep squared values for Euclidean.
-            metric_kwargs_chunk = dict(metric_kwargs)
+            metric_kwargs_chunk = dict(distance_kwargs)
             if metric == "cosine":
                 metric_kwargs_chunk['batch_norms'] = batch_norms
                 weight_norms = metric_kwargs_chunk.get('weight_norms')
@@ -264,7 +273,8 @@ def _find_bmus_core(batch: cp.ndarray, weights: cp.ndarray, verbose: bool = Fals
     distance_apply_sqrt = apply_sqrt
     if metric == "euclidean":
         distance_apply_sqrt = False
-    distances = calculate_distances(batch, weights, metric, apply_sqrt=distance_apply_sqrt)
+    distances = calculate_distances(
+        batch, weights, metric, apply_sqrt=distance_apply_sqrt, **distance_kwargs)
     
     # Find indices of minimum distances for each sample
     bmus = cp.argmin(distances, axis=1)

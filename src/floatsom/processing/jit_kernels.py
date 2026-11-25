@@ -106,12 +106,15 @@ def norm_p_distance_kernel(batch, weights, distances, batch_size, num_nodes, inp
     node_idx = jit.blockIdx.y * jit.blockDim.y + jit.threadIdx.y
     
     if sample_idx < batch_size and node_idx < num_nodes:
+        # cupyx JIT does not accept the abs() and pow() built-ins: use operators.
         dist = 0.0
         for d in range(input_dim):
-            diff = abs(batch[sample_idx, d] - weights[node_idx, d])
-            dist += pow(diff, p)
-        
-        distances[sample_idx, node_idx] = pow(dist, 1.0 / p)
+            diff = batch[sample_idx, d] - weights[node_idx, d]
+            if diff < 0.0:
+                diff = -diff
+            dist += diff ** p
+
+        distances[sample_idx, node_idx] = dist ** (1.0 / p)
 
 
 # ==================== BMU FINDING KERNELS ====================
@@ -241,7 +244,27 @@ def launch_manhattan_distance_jit(batch: cp.ndarray, weights: cp.ndarray, batch_
     manhattan_distance_kernel[(grid_x, grid_y), (block_x, block_y)](
         batch, weights, distances, batch_size, num_nodes, input_dim
     )
-    
+
+    return distances
+
+
+def launch_norm_p_distance_jit(batch: cp.ndarray, weights: cp.ndarray, p: float,
+                               batch_size: int = None, num_nodes: int = None,
+                               input_dim: int = None) -> cp.ndarray:
+    """
+    Launch JIT-compiled Lp norm distance kernel: (sum |x - w| ** p) ** (1 / p).
+    """
+    distances = cp.empty((batch_size, num_nodes), dtype=batch.dtype)
+
+    block_x = min(16, batch_size)
+    block_y = min(16, num_nodes)
+    grid_x = (batch_size + block_x - 1) // block_x
+    grid_y = (num_nodes + block_y - 1) // block_y
+
+    norm_p_distance_kernel[(grid_x, grid_y), (block_x, block_y)](
+        batch, weights, distances, batch_size, num_nodes, input_dim, batch.dtype.type(p)
+    )
+
     return distances
 
 

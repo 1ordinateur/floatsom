@@ -69,7 +69,7 @@ python examples/quickstart.py
 | `grid_size` | `suggest_grid_size(n_samples)`: about 5·√n nodes, side from 2 to 32 | integer, 2 or more; the map has `grid_size ** 2` nodes |
 | `topology` | `"hexagonal"` | `"hexagonal"`, `"grid"`, `"mst"`, `"rng"` |
 | `iterations` | `100` | positive integer |
-| `distance_metric` | `"euclidean"` | `"euclidean"`, `"cosine"`, `"manhattan"` |
+| `distance_metric` | `"euclidean"` | `"euclidean"`, `"cosine"`, `"manhattan"`, `"norm_p"` (Lp distance, p = 3) |
 | `profile` | `"library"` | a name in `floatsom.PROFILE_NAMES`; see [profile selection](docs/defaults.md) |
 | `seed` | `None` | integer, for results that you can repeat |
 | `verbose` | `False` | `True` logs the training progress |
@@ -121,7 +121,7 @@ exception is `RayConfig`, which needs `chunk_size`, `storage_path` and
 | `SamplingConfig.method` | `"full"`, `"random"`, `"hdsssom"` |
 | `ProcessingConfig.method` | `"batch"`, `"colors"`, `"minisom"` |
 | `ProcessingConfig.batch_mode` | `"full_batch"`, `"minibatch"` |
-| `ProcessingConfig.distance_metric` | `"euclidean"`, `"cosine"`, `"manhattan"` |
+| `ProcessingConfig.distance_metric` | `"euclidean"`, `"cosine"`, `"manhattan"`, `"norm_p"` (set p in `distance_metric_params`, for example `{"p": 4}`; default 3) |
 | `TopologyConfig.topology_type` | `"grid"`, `"hexagonal"`, `"mst"`, `"rng"` |
 | `TopologyConfig.topology_variant` | `"planar"`, `"toroidal"` (grid and hexagonal only) |
 | `FloatSOMParams.initialization_method` | `"random"`, `"pca"`, `"pca_sampling"`, `"pca_sampling_snake"`, `"pca_density"` |
