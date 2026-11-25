@@ -1,5 +1,8 @@
 # Ray execution
 
+Install Ray with the `ray` extra, for example `pip install '.[cuda12,ray]'`.
+Single-GPU training does not need Ray.
+
 Set `ProcessingConfig(method="batch", chunk_size=..., ray_config=RayConfig(...))`
 to select `RayBatchProcessor`. Omitting `ray_config` selects local GPU batch
 processing. `RayConfig` is defined in `floatsom.floatsom_params`; its `chunk_size`

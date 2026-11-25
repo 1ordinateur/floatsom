@@ -18,15 +18,18 @@ except ImportError:
 
 def create_floatsom(params, data=None):
     """
-    Create FloatSOM with components based on params configuration
-    
+    Create an untrained FloatSOM from a params configuration
+
+    For one-call training with defaults, use ``floatsom.train_som(data)``.
+
     Args:
         params: FloatSOMParams object containing all configuration
-        data_shape: Tuple of (n_samples, n_features) for chunk size calculation (required)
-        data: Optional data for topology initialization
-        
+        data: Optional data. If params.input_dim is None, the topology gets
+            input_dim from data.shape[1].
+
     Returns:
-        FloatSOM instance or MiniSOMAdapter configured according to params
+        FloatSOM instance or MiniSOMAdapter configured according to params.
+        Call ``train(data)`` on it.
     """
     # Extract configurations
     sampling_method = params.sampling_config.method

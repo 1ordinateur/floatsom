@@ -12,13 +12,15 @@ The original values are preserved, including differences in initialization.
 | `publication-rng-random` | Original RNG-random experiment profile; random-sampling MST uses PCA, all other contexts use random initialization. |
 | `publication-rng-mst-config` | Original control assigning MST radius and momentum to RNG; random-sampling MST and RNG use PCA. |
 
-The old filename `floatsom_min1000_tuned_defaults.json` referred to different
-initialization settings in the two repositories. These are now explicitly
-separated as `library` and `publication`; neither was overwritten during migration.
-The two experimental variants are preserved independently and are not duplicates
-of the main publication profile.
+Select a profile in `train_som`:
 
-Select a profile when constructing parameters:
+```python
+import floatsom
+
+som = floatsom.train_som(data, topology="rng", profile="publication")
+```
+
+Or select a profile when you construct the parameters:
 
 ```python
 from floatsom.floatsom_params import FloatSOMParams, SamplingConfig, TopologyConfig
@@ -53,3 +55,11 @@ data, so editing a returned dictionary does not modify other runs.
 The untuned XPySOM comparison baseline belongs to the publication benchmarks,
 at `benchmarks/optuna/config/baselines/xpysom-untuned.json` in that repository.
 It is not a tuned FloatSOM profile.
+
+## History
+
+The old filename `floatsom_min1000_tuned_defaults.json` referred to different
+initialization settings in the two repositories. These are now explicitly
+separated as `library` and `publication`; neither was overwritten during migration.
+The two experimental variants are preserved independently and are not duplicates
+of the main publication profile.

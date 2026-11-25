@@ -6,7 +6,10 @@ Centralizes all processor configurations in the processing module
 from dataclasses import dataclass, field
 from typing import Optional, Any, List, Tuple
 import warnings
-import cupy as cp
+
+import numpy as np
+
+from .._optional_dependencies import require_cupy
 
 
 _AUTO_CHUNK_BATCH_BASE_SAMPLES = 500_000
@@ -22,6 +25,7 @@ DEFAULT_MULTI_BUFFERING_PRELOAD_BUFFERS = 3
 
 def get_visible_gpu_vram_mib() -> int:
     """Return minimum visible GPU VRAM (MiB) across visible CUDA devices."""
+    cp = require_cupy()
     device_count = int(cp.cuda.runtime.getDeviceCount())
 
     if device_count <= 0:
@@ -146,7 +150,7 @@ class TrainingStepParams:
 class ChunkingConfig:
     """Configuration for chunk processing with fixed chunk size"""
     chunk_size: int  # Must be explicitly provided
-    dtype: type = cp.float32  # Data type for calculations
+    dtype: type = np.float32  # Data type for calculations (cupy.float32 is np.float32)
 
 # ==================== BATCH PROCESSING ====================
 

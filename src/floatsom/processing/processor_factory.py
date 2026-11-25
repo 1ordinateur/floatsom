@@ -6,6 +6,7 @@ Eliminates circular dependencies and provides clean instantiation
 from typing import Optional, Tuple
 import logging
 
+from .._optional_dependencies import require_ray
 from .base_processor import ProcessingMethod
 from ..floatsom_params import RayConfig, ProcessingConfig
 from .processing_params import BatchConfig, ColorsConfig, ChunkingConfig
@@ -99,7 +100,7 @@ class ProcessorFactory:
         
         # Check if Ray multi-GPU is requested
         if config.ray_config is not None:
-            # Import Ray processor - fail if not available
+            require_ray()
             from .ray_ops.ray_batch_processor import RayBatchProcessor
             logger.info("Creating RayBatchProcessor for multi-GPU training")
             return RayBatchProcessor(batch_config, config.ray_config, config)
@@ -147,7 +148,7 @@ class ProcessorFactory:
         
         # Check if Ray multi-GPU is requested
         if config.ray_config is not None:
-            # Import Ray processor - fail if not available
+            require_ray()
             from .ray_ops.ray_colors_processor import RayColorsProcessor
             logger.info("Creating RayColorsProcessor for multi-GPU training")
             return RayColorsProcessor(colors_config, config.ray_config, config)

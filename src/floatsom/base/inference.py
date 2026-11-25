@@ -29,7 +29,12 @@ class InferenceMixin:
             raise ValueError(f"chunk_size must be > 0, got {chunk_size}.")
 
         data_source = self._create_inference_data_source(data_input)
-        n_samples, _ = data_source.get_shape()
+        n_samples, n_features = data_source.get_shape()
+        try:
+            self.check_feature_count(int(n_features), "infer")
+        except ValueError:
+            data_source.cleanup()
+            raise
 
         if verbose:
             logger.info(f"Starting inference on {n_samples:,} samples")

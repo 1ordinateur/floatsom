@@ -1,21 +1,24 @@
 """Small single-GPU example: python examples/quickstart.py."""
+import tempfile
+from pathlib import Path
+
 import numpy as np
-from floatsom.base.floatsom_factories import create_floatsom
-from floatsom.floatsom_params import FloatSOMParams, ProcessingConfig, SamplingConfig, TopologyConfig
+
+import floatsom
 
 
 def main():
     data = np.random.default_rng(42).normal(size=(2000, 8)).astype(np.float32)
-    params = FloatSOMParams(
-        input_dim=data.shape[1], total_iterations=20, seed=42,
-        sampling_config=SamplingConfig(method="full"),
-        processing_config=ProcessingConfig(method="batch", batch_mode="full_batch", chunk_size=1000),
-        topology_config=TopologyConfig(topology_type="hexagonal", grid_size=10),
-    )
-    som = create_floatsom(params, data=data)
-    som.train(data)
-    assignments = som.predict(data)
-    print(f"Assigned {len(assignments)} observations to {params.total_nodes} SOM nodes.")
+
+    som = floatsom.train_som(data, seed=42)
+    clusters = som.predict(data).get()
+    print(f"Assigned {len(clusters)} observations to {som.get_weights().shape[0]} SOM nodes.")
+
+    with tempfile.TemporaryDirectory() as folder:
+        path = som.save(Path(folder) / "quickstart.floatsom")
+        loaded = floatsom.FloatSOM.load(path)
+        same = np.array_equal(loaded.predict(data).get(), clusters)
+        print(f"Saved and loaded the model; the same assignments: {same}.")
 
 
 if __name__ == "__main__":

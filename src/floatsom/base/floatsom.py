@@ -5,6 +5,7 @@ FloatSOM - Flexible Self-Organizing Map with configurable sampling and processin
 import cupy as cp
 import numpy as np
 import time
+from pathlib import Path
 import logging
 import warnings
 from typing import Optional, Union, Tuple, Dict, Any, List
@@ -22,6 +23,8 @@ from ..floatsom_params import (
 from ..data.sources.base import DataSource
 from ..data.factory import DataSourceFactory
 from ..processing.utils import find_bmus
+from .arrays import as_feature_matrix
+from .persistence import load_som, save_som
 from .inference import InferenceMixin
 
 
@@ -528,26 +531,44 @@ class FloatSOM(InferenceMixin):
     
     def predict(self, data: Union[np.ndarray, cp.ndarray]) -> Union[np.ndarray, cp.ndarray]:
         """
-        Find Best Matching Units (BMUs) for new data
-        
+        Find the Best Matching Unit (BMU) of each sample, with the training distance metric
+
         Args:
-            data: Input data to map (n_samples, n_features)
-            
+            data: Input data (n_samples, n_features): NumPy, CuPy, pandas or a nested list
+
         Returns:
-            bmu_indices: BMU indices for each input sample
+            bmu_indices: BMU index of each sample (CuPy array)
         """
+        return self._find_bmus(data, return_distances=False, caller="predict")
+
+    def _find_bmus(self, data, return_distances: bool, caller: str):
+        """Return BMUs (and distances) for ``data`` with the configured metric, in chunks."""
         if not self.is_trained:
-            raise ValueError("SOM must be trained before prediction")
-        data_gpu = cp.asarray(data, dtype=cp.float32) if not isinstance(data, cp.ndarray) else data.astype(cp.float32, copy=False)
-        self.weights = cp.asarray(self.weights, dtype=cp.float32) if not isinstance(self.weights, cp.ndarray) else self.weights.astype(cp.float32, copy=False)
+            raise ValueError(f"SOM must be trained before {caller}")
+        query = cp.asarray(as_feature_matrix(data, caller), dtype=cp.float32)
+        self.weights = cp.asarray(self.weights, dtype=cp.float32)
+        self.check_feature_count(int(query.shape[1]), caller)
+        processing = self.params.processing_config
         node_chunk_size = min(900, self.weights.shape[0]) if self.weights.size else 1
         return find_bmus(
-            batch=data_gpu,
+            batch=query,
             weights=self.weights,
             verbose=self.verbose,
-            return_distances=False,
+            return_distances=return_distances,
+            chunk_size=processing.chunk_size,
+            metric=processing.distance_metric,
             node_chunk_size=node_chunk_size,
+            **(processing.distance_metric_params or {}),
         )
+
+    def check_feature_count(self, n_features: int, caller: str) -> None:
+        """Raise ValueError if ``n_features`` differs from the trained weights."""
+        trained_features = int(self.weights.shape[1])
+        if n_features != trained_features:
+            raise ValueError(
+                f"{caller} got data with {n_features} features, but the SOM was trained "
+                f"with {trained_features} features. Use the same columns, in the same order."
+            )
     
     def get_weights(self, as_numpy: bool = True) -> Union[np.ndarray, cp.ndarray]:
         """
@@ -581,33 +602,17 @@ class FloatSOM(InferenceMixin):
     
     def map_vectors(self, data: Union[np.ndarray, cp.ndarray]) -> Tuple[Union[np.ndarray, cp.ndarray], Union[np.ndarray, cp.ndarray]]:
         """
-        Map input vectors to BMUs and return both indices and distances
-        
+        Map input vectors to BMUs, with the training distance metric
+
         Args:
             data: Input data (n_samples, n_features)
-            
+
         Returns:
-            bmu_indices: BMU indices for each sample
-            bmu_distances: Distances to BMUs for each sample
+            bmu_indices: BMU index of each sample
+            bmu_distances: Distance of each sample to its BMU (not squared for Euclidean)
         """
-        if not self.is_trained:
-            raise ValueError("SOM must be trained before mapping")
+        return self._find_bmus(data, return_distances=True, caller="map_vectors")
 
-        data = cp.asarray(data) if not isinstance(data, cp.ndarray) else data
-        
-        # Calculate distances
-        data_expanded = data[:, None, :]
-        weights_expanded = self.weights[None, :, :]
-        distances = self.xp.sum((data_expanded - weights_expanded) ** 2, axis=2)
-        
-        # Find BMUs and their distances
-        bmu_indices = self.xp.argmin(distances, axis=1)
-        bmu_distances = self.xp.sqrt(distances[self.xp.arange(len(data)), bmu_indices])
-        
-        return bmu_indices, bmu_distances
-    
-
-    
     def _initialize_with_data_source(self, data_source: DataSource) -> None:
         """
         Initialize training components using DataSource abstraction
@@ -919,30 +924,11 @@ class FloatSOM(InferenceMixin):
         else:
             raise ValueError(f"Unknown grid type: {grid_type}")
         
-        # Preserve original adjacency
-        self.original_adjacency_list = self.topology.adjacency_list.copy() if self.topology.adjacency_list else None
-        
-        # Also preserve MST edges if available
-        if hasattr(self.topology, 'mst_edges'):
-            self.original_mst_edges = self.topology.mst_edges.copy() if self.topology.mst_edges else None
-        
         # Perform grid assignment using final weights
         node_to_grid, grid_adjacency = assigner.assign_nodes_to_grid(
             self.weights, self.topology.total_nodes
         )
-        
-        # Update topology's adjacency to use grid
-        self.topology.adjacency_list = grid_adjacency
-        self.adjacency_list = grid_adjacency  # Also store at FloatSOM level
-        self.grid_node_mapping = node_to_grid
-        
-        # Mark topology as reformed
-        self.topology.is_reformed = True
-        self.topology.reformed_type = grid_type
-        
-        # Add grid_size attribute for metrics compatibility
-        grid_size = int(np.ceil(np.sqrt(self.topology.total_nodes)))
-        self.topology.grid_size = grid_size
+        self._apply_grid_reform(node_to_grid, grid_adjacency, grid_type)
         
         if self.verbose:
             logger.info(f"Successfully reformed {self.topology.name} to {grid_type} grid")
@@ -950,6 +936,53 @@ class FloatSOM(InferenceMixin):
             if hasattr(self, 'original_mst_edges'):
                 logger.info(f"Original MST edges preserved in self.original_mst_edges")
     
+    def _apply_grid_reform(self, node_to_grid, grid_adjacency, grid_type: str) -> None:
+        """Put a grid assignment on the topology, and keep the original adjacency."""
+        # Preserve original adjacency
+        self.original_adjacency_list = self.topology.adjacency_list.copy() if self.topology.adjacency_list else None
+
+        # Also preserve MST edges if available
+        if hasattr(self.topology, 'mst_edges'):
+            self.original_mst_edges = self.topology.mst_edges.copy() if self.topology.mst_edges else None
+
+        # Update topology's adjacency to use grid
+        self.topology.adjacency_list = grid_adjacency
+        self.adjacency_list = grid_adjacency  # Also store at FloatSOM level
+        self.grid_node_mapping = node_to_grid
+
+        # Mark topology as reformed
+        self.topology.is_reformed = True
+        self.topology.reformed_type = grid_type
+
+        # Add grid_size attribute for metrics compatibility
+        grid_size = int(np.ceil(np.sqrt(self.topology.total_nodes)))
+        self.topology.grid_size = grid_size
+
+    def save(self, path) -> Path:
+        """
+        Save the trained SOM to one .npz file (weights, settings and grid reform)
+
+        Args:
+            path: File path. The file gets this exact name.
+
+        Returns:
+            path: The path of the file, as a Path
+        """
+        return save_som(self, path)
+
+    @classmethod
+    def load(cls, path) -> "FloatSOM":
+        """
+        Load a SOM that FloatSOM.save() wrote. The SOM is ready for predict() and infer().
+
+        Args:
+            path: File path
+
+        Returns:
+            som: The trained FloatSOM
+        """
+        return load_som(path)
+
     def get_adjacency_info(self) -> Dict[str, Any]:
         """
         Get current and original adjacency information.

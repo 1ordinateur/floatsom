@@ -7,11 +7,10 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Mapping
 import warnings
 import logging
 import numpy as np
-import cupy
 from floatsom.processing.processing_params import (
     AsyncLoadingConfig,
     CleanupConfig,
@@ -22,6 +21,7 @@ from floatsom.processing.processing_params import (
 # Note: chunk_size must now be explicitly provided - no defaults
 
 from floatsom.defaults import profile_path, resolve_profile_defaults, validate_profile
+from floatsom.config_io import dataclass_from_dict, dataclass_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,11 @@ _CONTEXTUAL_FLOATSOM_DEFAULT_TOPOLOGY_KEYS = {"hexagonal", "mst", "rng"}
 _VALID_DECAY_TYPES = {"exponential", "linear", "sigmoid", "gaussian", "asymptotic", "fixed"}
 _VALID_INITIALIZATION_METHODS = {"random", "pca", "pca_sampling", "pca_sampling_snake", "pca_density"}
 _VALID_REFORM_DELAUNAY_BACKENDS = {"cupyx", "local"}
+# FloatSOMParams fields that hold training state, not settings.
+_RUNTIME_FIELDS = frozenset({
+    "current_radius", "current_learning_rate", "current_iteration", "current_momentum",
+    "delta_weights", "selector_callback", "bmu_scheduler",
+})
 
 
 @lru_cache(maxsize=1)
@@ -147,7 +152,7 @@ class RayConfig:
 class ProcessingConfig:
     """Configuration for processing methods"""
     # General processing parameters
-    chunk_size: int  # Falls back to 50_000 if not provided
+    chunk_size: Optional[int] = None  # None -> 50_000
     method: str = "batch"  # Options: "colors", "batch", "minisom"
     
     # Distance metric configuration
@@ -639,6 +644,19 @@ class FloatSOMParams:
         if self.processing_config.normalization == "none":
             warnings.warn("Normalization is set to none. Scale LR to be higher, weight updates normed by dividing by number of samples")
     
+    def to_dict(self) -> Dict[str, Any]:
+        """Return the settings as a nested, JSON-safe dict, with no training state."""
+        return dataclass_to_dict(self, exclude=_RUNTIME_FIELDS)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "FloatSOMParams":
+        """Build params from a nested dict, for example ``json.load`` output.
+
+        Omitted settings get their usual defaults. An unknown setting raises
+        ValueError, with the nearest valid name.
+        """
+        return dataclass_from_dict(cls, data, exclude=_RUNTIME_FIELDS)
+
     def get_architecture_summary(self) -> str:
         """Get summary of the selected FloatSOM architecture"""
         return (f"FloatSOM: {self.sampling_config.method.title()}Sampling × "

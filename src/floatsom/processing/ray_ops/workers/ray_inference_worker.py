@@ -29,7 +29,15 @@ class RayInferenceWorker(RayPipelineBaseWorker):
         weights: np.ndarray,
         output_path: str,
         node_chunk_size: int = 900,
+        metric: str = "euclidean",
+        metric_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """Write the BMU of each row to ``output_path``.
+
+        Give ``metric`` and ``metric_kwargs`` from the training
+        ``ProcessingConfig`` (``distance_metric``, ``distance_metric_params``),
+        so that the assignments agree with ``FloatSOM.predict``.
+        """
         if self.data_loader is None and self.data_path:
             self._initialize_data_loader()
         if self.data_loader is None:
@@ -72,6 +80,8 @@ class RayInferenceWorker(RayPipelineBaseWorker):
                         verbose=False,
                         return_distances=False,
                         node_chunk_size=int(node_chunk_size),
+                        metric=metric,
+                        **(metric_kwargs or {}),
                     )
                     output[chunk_start:chunk_stop] = cp.asnumpy(bmus).astype(np.int32, copy=False)
                     rows_processed += int(chunk_stop - chunk_start)
