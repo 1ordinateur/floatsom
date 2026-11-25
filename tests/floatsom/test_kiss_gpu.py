@@ -173,3 +173,43 @@ def test_verbose_logs_training_progress(caplog, data):
     finally:
         floatsom_logger.setLevel(old_level)
         floatsom_logger.handlers[:] = old_handlers
+
+
+def test_progress_stops_after_the_verbose_call(caplog, tmp_path, som, data):
+    floatsom_logger = logging.getLogger("floatsom")
+    old_level, old_handlers = floatsom_logger.level, list(floatsom_logger.handlers)
+    path = write_npy(tmp_path, data)
+    try:
+        floatsom.train_som(data, grid_size=3, iterations=2, seed=1, verbose=True)
+        caplog.clear()
+        som.infer(path, chunk_size=128)
+        assert not progress_records(caplog), "a quiet call after a verbose call logged progress"
+    finally:
+        floatsom_logger.setLevel(old_level)
+        floatsom_logger.handlers[:] = old_handlers
+
+
+def test_infer_verbose_shows_progress(caplog, som, data):
+    floatsom_logger = logging.getLogger("floatsom")
+    old_level, old_handlers = floatsom_logger.level, list(floatsom_logger.handlers)
+    try:
+        som.infer(data, chunk_size=128, verbose=True)
+        assert progress_records(caplog), "infer(verbose=True) gave no INFO log records"
+    finally:
+        floatsom_logger.setLevel(old_level)
+        floatsom_logger.handlers[:] = old_handlers
+
+
+# --- integer column names (pd.DataFrame(array)) stay integers ----------------
+
+
+def test_integer_column_names_select_the_columns(tmp_path, data):
+    frame = pd.DataFrame(data)                     # column labels 0, 1, 2, 3
+    named = floatsom.train_som(frame, grid_size=3, iterations=5, seed=2)
+    assert named.feature_names == [0, 1, 2, 3]
+    reordered = frame[[3, 2, 1, 0]]
+    with pytest.raises(ValueError, match="order"):
+        named.predict(reordered)
+    np.testing.assert_array_equal(named.predict(reordered[named.feature_names]), named.predict(frame))
+    loaded = floatsom.FloatSOM.load(named.save(tmp_path / "integer_names.floatsom"))
+    assert loaded.feature_names == [0, 1, 2, 3]
