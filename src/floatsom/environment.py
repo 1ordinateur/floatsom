@@ -4,9 +4,9 @@ import importlib.metadata
 import platform
 from typing import Any, Dict
 
-from ._optional_dependencies import require_cupy
+from ._optional_dependencies import GIT_SOURCE, require_cupy
 
-_RAY_NOTE = "needed only for multi-GPU training: pip install 'floatsom[ray]'"
+_RAY_NOTE = f'needed only for multi-GPU training: pip install "floatsom[ray] @ {GIT_SOURCE}"'
 
 
 def check_environment(print_report: bool = True) -> Dict[str, Any]:

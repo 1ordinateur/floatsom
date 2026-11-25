@@ -2,17 +2,21 @@
 
 import importlib
 
+# The install source for the hints: the package is not on PyPI.
+GIT_SOURCE = "git+https://github.com/1ordinateur/floatsom.git"
+
 CUPY_INSTALL_HINT = (
     "FloatSOM needs CuPy to train or use a SOM on the GPU, but CuPy is not installed. "
-    "Install the extra that matches your CUDA version: "
-    "pip install 'floatsom[cuda12]' or pip install 'floatsom[cuda13]'. "
-    "For AMD GPUs, install CuPy for your ROCm version and then 'floatsom[rocm]'. "
+    "Run nvidia-smi and read 'CUDA Version'. For 12.x, install with: "
+    f'pip install "floatsom[cuda12] @ {GIT_SOURCE}". '
+    "For 13.x, use floatsom[cuda13]. "
+    "For AMD GPUs, install CuPy for your ROCm version and then floatsom[rocm]. "
     "Run 'python -m floatsom' to check the GPU setup."
 )
 
 RAY_INSTALL_HINT = (
     "Multi-GPU processing (ProcessingConfig.ray_config) needs Ray, but Ray is not installed. "
-    "Install it with: pip install 'floatsom[ray]'. "
+    f'Install it with: pip install "floatsom[ray] @ {GIT_SOURCE}". '
     "For single-GPU processing, set ray_config=None."
 )
 

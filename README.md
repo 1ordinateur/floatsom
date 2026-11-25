@@ -1,171 +1,91 @@
 # FloatSOM
 
-GPU-accelerated self-organizing maps (SOMs) with flexible sampling, topologies
-and local or distributed processing.
+FloatSOM trains self-organizing maps (SOMs) on a GPU. Give it a table of
+numbers, for example cytometry markers, and it puts each row (cell) on a node
+of a map. Similar rows go to the same node or to nodes near each other.
 
-## Installation
+## Install
 
-FloatSOM needs Python 3.10 or later and a GPU. Select the extra that matches
-your GPU:
+FloatSOM needs Python 3.10 or later and a GPU.
 
-| GPU | Install command |
-| --- | --- |
-| NVIDIA, CUDA 12 | `pip install '.[cuda12]'` |
-| NVIDIA, CUDA 13 | `pip install '.[cuda13]'` |
-| AMD (ROCm) | Install CuPy for your ROCm version, then `pip install '.[rocm]'` |
+1. Find the CUDA version of your GPU driver. Run `nvidia-smi` and read
+   "CUDA Version" in the top line. 12.x needs the `cuda12` extra. 13.x
+   needs the `cuda13` extra.
+2. Install FloatSOM with that extra:
 
-For multi-GPU or multi-node training with Ray, also add the `ray` extra, for
-example `pip install '.[cuda12,ray]'`. Single-GPU training does not need Ray.
+   ```bash
+   pip install "floatsom[cuda12] @ git+https://github.com/1ordinateur/floatsom.git"
+   ```
 
-```bash
-git clone https://github.com/1ordinateur/floatsom.git
-cd floatsom
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install '.[cuda12]'
-```
+3. Check the setup:
 
-### Check the setup
+   ```bash
+   python -m floatsom
+   ```
 
-```bash
-python -m floatsom
-```
+   This command shows the CuPy, CUDA, GPU and Ray status. If a problem stops
+   GPU training, it tells you how to fix the problem.
 
-This command shows the CuPy, CUDA, GPU and Ray status. If a problem stops GPU
-training, the command tells you how to fix it and exits with code 1. In
-Python, `floatsom.check_environment()` returns the same report as a dict.
+Other cases:
+
+- Several GPUs or nodes (Ray): use the extras `[cuda12,ray]`. One GPU does
+  not need Ray.
+- AMD GPU (ROCm): install CuPy for your ROCm version, then use the `[rocm]`
+  extra.
+- From a clone: `git clone https://github.com/1ordinateur/floatsom.git`, then
+  `pip install "./floatsom[cuda12]"`.
 
 ## Quick start
 
 ```python
+import pandas as pd
 import floatsom
 
-som = floatsom.train_som(data)          # data: (n_samples, n_features)
-clusters = som.predict(data)            # BMU node index of each sample (CuPy array)
-som.save("model.floatsom")
+cells = pd.read_csv("cells.csv")
+markers = ["CD3", "CD4", "CD8", "CD19"]        # numeric columns, already transformed
 
-som = floatsom.FloatSOM.load("model.floatsom")
-clusters = som.predict(new_data)
+som = floatsom.train_som(cells[markers], seed=42)
+cells["node"] = som.predict(cells[markers])    # SOM node of each cell
+som.save("cells.floatsom")
 ```
 
-`train_som` accepts a NumPy array, a CuPy array, a pandas DataFrame with
-numeric columns, or a nested list. It checks the data before it uses the GPU,
-and it gives a clear error for these problems:
-
-- data that is not 2-D,
-- columns that are not numeric (the error names them),
-- rows with NaN or infinite values (the error counts them).
-
-Run the complete example:
-
-```bash
-python examples/quickstart.py
-```
-
-### Options of `train_som`
-
-| Option | Default | Values |
-| --- | --- | --- |
-| `grid_size` | `suggest_grid_size(n_samples)`: about 5·√n nodes, side from 2 to 32 | integer, 2 or more; the map has `grid_size ** 2` nodes |
-| `topology` | `"hexagonal"` | `"hexagonal"`, `"grid"`, `"mst"`, `"rng"` |
-| `iterations` | `100` | positive integer |
-| `distance_metric` | `"euclidean"` | `"euclidean"`, `"cosine"`, `"manhattan"`, `"norm_p"` (Lp distance, p = 3) |
-| `profile` | `"library"` | a name in `floatsom.PROFILE_NAMES`; see [profile selection](docs/defaults.md) |
-| `seed` | `None` | integer, for results that you can repeat |
-| `verbose` | `False` | `True` logs the training progress |
-
-`train_som` uses full sampling and full-batch processing on one GPU. It
-selects `chunk_size` from the GPU memory.
-
-### Use the trained SOM
-
-| Method | Result |
-| --- | --- |
-| `som.predict(data)` | BMU index of each sample |
-| `som.map_vectors(data)` | BMU index and BMU distance of each sample |
-| `som.infer(data_or_path, output_path=None)` | BMU indices in chunks, for large arrays or files; writes Zarr if `output_path` is set |
-| `som.get_weights()` | Node weights as a NumPy array, shape `(n_nodes, n_features)` |
-| `som.save(path)` / `FloatSOM.load(path)` | One `.npz` file with the weights, the settings and the grid reform; no pickle. A loaded SOM uses one GPU, also if it trained with Ray. |
-
-Prediction uses the distance metric of the training. The data must have the
-same columns as the training data, in the same order.
-
-## Full configuration
-
-For subsampling, other processing methods, data in files or more GPUs, build
-the parameters and call `create_floatsom`:
+Use the model again on new data:
 
 ```python
-from floatsom import (
-    FloatSOMParams, ProcessingConfig, SamplingConfig, TopologyConfig, create_floatsom,
-)
-
-params = FloatSOMParams(
-    input_dim=data.shape[1],
-    total_iterations=20,
-    seed=42,
-    sampling_config=SamplingConfig(method="random", target_proportion=0.1),
-    processing_config=ProcessingConfig(method="batch", chunk_size=100_000),
-    topology_config=TopologyConfig(topology_type="mst", num_nodes=400),
-)
-som = create_floatsom(params, data=data)
-som.train(data)
+som = floatsom.FloatSOM.load("cells.floatsom")
+new_cells["node"] = som.predict(new_cells[som.feature_names])
 ```
 
-Each setting has a default, so give only the settings that you change. The
-exception is `RayConfig`, which needs `chunk_size`, `storage_path` and
-`local_storage_path`. The main choices are:
+Some important points:
 
-| Setting | Values |
+- `train_som` accepts a pandas DataFrame, a NumPy array, a CuPy array or a
+  nested list. The model keeps the column names of a DataFrame, and
+  `predict` checks them.
+- `predict` gives a NumPy array for NumPy, pandas or list input, and a CuPy
+  array for CuPy input.
+- `predict` gives the SOM node of each row, not a final cluster. To get a
+  small number of clusters (metaclusters), see the
+  [user guide](docs/user_guide.md#metaclusters).
+
+## Examples
+
+| Example | What it shows |
 | --- | --- |
-| `SamplingConfig.method` | `"full"`, `"random"`, `"hdsssom"` |
-| `ProcessingConfig.method` | `"batch"`, `"colors"`, `"minisom"` |
-| `ProcessingConfig.batch_mode` | `"full_batch"`, `"minibatch"` |
-| `ProcessingConfig.distance_metric` | `"euclidean"`, `"cosine"`, `"manhattan"`, `"norm_p"` (set p in `distance_metric_params`, for example `{"p": 4}`; default 3) |
-| `TopologyConfig.topology_type` | `"grid"`, `"hexagonal"`, `"mst"`, `"rng"` |
-| `TopologyConfig.topology_variant` | `"planar"`, `"toroidal"` (grid and hexagonal only) |
-| `FloatSOMParams.initialization_method` | `"random"`, `"pca"`, `"pca_sampling"`, `"pca_sampling_snake"`, `"pca_density"` |
+| [`examples/quickstart.py`](examples/quickstart.py) | Train, predict, save and load, with a NumPy array |
+| [`examples/dataframe_labels.py`](examples/dataframe_labels.py) | CSV file in, node and metacluster columns out |
+| [`examples/large_file.py`](examples/large_file.py) | Label a large Zarr file in chunks, and write the labels to Zarr |
 
-### Settings in JSON
+Run an example with `python examples/quickstart.py`.
 
-`FloatSOMParams.to_dict()` gives the settings as a nested, JSON-safe dict.
-`FloatSOMParams.from_dict()` builds the parameters from such a dict. Omitted
-settings get their defaults. An unknown setting gives an error with the
-nearest valid name.
+## Documentation
 
-```python
-import json
-from pathlib import Path
-from floatsom import FloatSOMParams
-
-params = FloatSOMParams.from_dict(json.loads(Path("som.json").read_text()))
-Path("som_copy.json").write_text(json.dumps(params.to_dict(), indent=2))
-```
-
-```json
-{
-  "input_dim": 40,
-  "total_iterations": 50,
-  "topology_config": {"topology_type": "hexagonal", "grid_size": 20},
-  "processing_config": {"chunk_size": 200000, "distance_metric": "cosine"}
-}
-```
-
-See [profile selection](docs/defaults.md) and [Ray execution](docs/ray_execution.md)
-for more configuration options.
-
-## Troubleshooting
-
-| Message or problem | Fix |
+| Page | Contents |
 | --- | --- |
-| `ImportError: FloatSOM needs CuPy ...` | Install the `cuda12`, `cuda13` or `rocm` extra. Then run `python -m floatsom`. |
-| `CuPy ... cannot use a GPU` | Make sure that the driver works (`nvidia-smi`). Make sure that the CuPy extra matches the CUDA version of the driver. |
-| `CuPy found no GPU` | On a cluster, run inside a GPU job. Check `CUDA_VISIBLE_DEVICES` (or `ROCR_VISIBLE_DEVICES` on AMD). |
-| CUDA out of memory | Set a smaller `ProcessingConfig.chunk_size`. `train_som` selects it from the GPU memory. |
-| `... got data with N features, but the SOM was trained with M features` | Give the same columns as the training data, in the same order. |
-| `... rows have NaN or infinite values` | Remove or impute these rows before training. |
-| `Multi-GPU processing ... needs Ray` | Install the `ray` extra, or set `ray_config=None` for one GPU. |
-| `reform_grid=True` is slow on AMD | RAPIDS has no AMD build, so FloatSOM uses a CPU fallback (scikit-learn PCA and the networkx ForceAtlas2 layout). The time and memory increase as the square of the node count: about 40 s for 1024 nodes, and about 1 h and 8 GB of RAM for 10,000 nodes. |
+| [User guide](docs/user_guide.md) | Data preparation, `train_som` options, results, metaclusters, save and load, large files |
+| [Configuration](docs/configuration.md) | All settings, with advice on when to change them; settings in JSON |
+| [Troubleshooting](docs/troubleshooting.md) | Error messages and their fixes |
+| [Tuned profiles](docs/defaults.md) | The sets of tuned default values |
+| [Ray execution](docs/ray_execution.md) | Training on several GPUs or nodes |
 
 ## Citation
 

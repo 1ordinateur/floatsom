@@ -4,7 +4,7 @@ import math
 import numbers
 from typing import Optional
 
-from .base.arrays import as_feature_matrix, count_rows_not_finite
+from .base.arrays import as_feature_matrix, count_rows_not_finite, feature_names_of
 from .base.floatsom import FloatSOM
 from .base.floatsom_factories import create_floatsom
 from .floatsom_params import FloatSOMParams, ProcessingConfig, SamplingConfig, TopologyConfig
@@ -41,7 +41,8 @@ def train_som(
 
     Args:
         data: Array-like with shape (n_samples, n_features): a NumPy or CuPy
-            array, a pandas DataFrame with numeric columns, or a nested list.
+            array, a pandas DataFrame with numeric columns, or a nested list. The SOM
+            keeps the column names of a DataFrame in ``feature_names``.
         grid_size: Side of the map; the map has grid_size ** 2 nodes. The
             default comes from ``suggest_grid_size(n_samples)``.
         topology: "hexagonal", "grid", "mst" or "rng".
@@ -49,12 +50,13 @@ def train_som(
         distance_metric: "euclidean", "cosine", "manhattan" or "norm_p" (Lp, p = 3).
         profile: Tuned defaults profile; see ``floatsom.PROFILE_NAMES``.
         seed: Random seed, for results that you can repeat.
-        verbose: Log the training progress.
+        verbose: Show the training progress (INFO logs of the "floatsom" logger).
 
     For data that does not fit in memory, for subsampling or for more GPUs,
     build a ``FloatSOMParams`` and call ``create_floatsom`` instead.
     """
     matrix = as_feature_matrix(data, "train_som")
+    feature_names = feature_names_of(data)
     n_samples, n_features = (int(size) for size in matrix.shape)
     side = suggest_grid_size(n_samples) if grid_size is None else _integer_option(
         grid_size, "grid_size", MIN_GRID_SIZE)
@@ -89,6 +91,7 @@ def train_som(
     params = build_params(chunk_size)
     som = create_floatsom(params, data=matrix)
     som.train(matrix)
+    som.feature_names = feature_names
     return som
 
 

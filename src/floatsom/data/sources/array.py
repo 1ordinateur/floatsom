@@ -100,7 +100,11 @@ class ArrayDataSource(DataSource):
             The underlying array
         """
         return self.data
-    
+
+    def get_array(self) -> Union[np.ndarray, cp.ndarray]:
+        """Return the rows: the underlying array."""
+        return self.data
+
     def supports_streaming(self) -> bool:
         """
         Arrays don't need streaming (already in memory)

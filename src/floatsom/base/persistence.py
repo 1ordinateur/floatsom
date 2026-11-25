@@ -31,6 +31,7 @@ def save_som(som, path) -> Path:
         "version": FORMAT_VERSION,
         "params": params,
         "grid_reform": _grid_reform_state(som),
+        "feature_names": som.feature_names,
     }
     with path.open("wb") as handle:
         np.savez(handle, weights=weights, metadata=np.array(json.dumps(metadata)))
@@ -64,6 +65,7 @@ def load_som(path):
     som = create_floatsom(FloatSOMParams.from_dict(settings))
     som.weights = cp.asarray(weights, dtype=cp.float32)
     som.is_trained = True
+    som.feature_names = metadata.get("feature_names")  # None in files from older versions
     som.topology.finalize_topology(som.weights)
     reform = metadata.get("grid_reform")
     if reform:

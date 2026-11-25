@@ -1,5 +1,8 @@
 """Make a 2-D float32 feature matrix from user data, with clear errors."""
 
+import os
+from typing import List, Optional
+
 import cupy as cp
 import numpy as np
 
@@ -11,7 +14,13 @@ def as_feature_matrix(data, caller: str):
     nested list. A CuPy array stays on the GPU. ``caller`` names the public
     function in the error messages.
     """
-    if hasattr(data, "columns") and hasattr(data, "to_numpy"):
+    if isinstance(data, (str, os.PathLike)):
+        raise ValueError(
+            f"{caller} needs an array or a DataFrame, not a file path ({os.fspath(data)}). "
+            "Read the file first, for example df = pandas.read_csv(path). "
+            "To label a large file in chunks, use som.infer(path)."
+        )
+    if _is_dataframe(data):
         data = _dataframe_values(data, caller)
     if isinstance(data, cp.ndarray):
         matrix = data.astype(cp.float32, copy=False)
@@ -34,6 +43,17 @@ def as_feature_matrix(data, caller: str):
     if matrix.shape[1] == 0:
         raise ValueError(f"{caller} got data with no columns (features).")
     return matrix
+
+
+def feature_names_of(data) -> Optional[List[str]]:
+    """Return the column names of a DataFrame as strings, or None for other data."""
+    if _is_dataframe(data):
+        return [str(column) for column in data.columns]
+    return None
+
+
+def _is_dataframe(data) -> bool:
+    return hasattr(data, "columns") and hasattr(data, "to_numpy")
 
 
 def _dataframe_values(frame, caller: str):

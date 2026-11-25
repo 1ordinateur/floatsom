@@ -3,9 +3,11 @@
 Start here::
 
     import floatsom
-    som = floatsom.train_som(data)          # data: (n_samples, n_features)
-    clusters = som.predict(data)
+    som = floatsom.train_som(data)          # data: DataFrame or array (n_samples, n_features)
+    nodes = som.predict(data)               # SOM node of each row
     som.save("model.floatsom")
+
+See docs/user_guide.md for the full guide.
 
 Names load on first use. The config classes work with no CuPy. The training
 names need CuPy, and give an install hint when it is missing.

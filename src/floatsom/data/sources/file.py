@@ -236,6 +236,11 @@ class FileDataSource(DataSource):
             else:
                 yield np.asarray(chunk_data)
     
+    def get_array(self):
+        """Return the rows as an array-like object: a NumPy array, a memory map or a Zarr array."""
+        self._ensure_data_loaded()
+        return self._data
+
     def get_reference(self) -> str:
         """
         Return file path as reference for processors

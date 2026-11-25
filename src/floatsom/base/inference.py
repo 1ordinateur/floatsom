@@ -1,12 +1,26 @@
 import logging
+import os
 from typing import Optional, Union
 
 import cupy as cp
 import numpy as np
 
 from ..data.sources.array import ArrayDataSource
+from .arrays import as_feature_matrix
 
 logger = logging.getLogger(__name__)
+
+
+def _rows_loader(data_source, chunk_size: int):
+    """Return a loader that gives the rows of ``data_source`` in order, in chunks."""
+    from ..data.cpugpu_fast_loader import CPUGPUFastLoader
+
+    return CPUGPUFastLoader(
+        ram_data=data_source.get_array(),
+        ram_mode=True,
+        chunk_size=chunk_size,
+        randomize_chunks=False,
+    )
 
 
 class InferenceMixin:
@@ -21,6 +35,22 @@ class InferenceMixin:
         use_cuda_streams: bool = True,
         verbose: Optional[bool] = None,
     ) -> Union[np.ndarray, str]:
+        """Find the BMU of each row in chunks, for data that is too large for one predict call.
+
+        Args:
+            data_input: A NumPy or CuPy array, a pandas DataFrame, a nested list, or the
+                path (str or pathlib.Path) of a .npy, .npz, .csv, .parquet, Zarr or
+                FastArrayStore file.
+            output_path: If set, write the BMU indices to a Zarr group at this path, in the
+                int32 array "assignments", and return the path.
+            chunk_size: Rows in each chunk. infer makes it smaller if the GPU memory is low.
+            return_in_memory: Not used. Kept for compatibility.
+            use_cuda_streams: Overlap the data copy and the BMU calculation.
+            verbose: Log the progress. The default is the verbose setting of the SOM.
+
+        Returns:
+            The BMU index of each row as an int32 NumPy array, or output_path.
+        """
         if not self.is_trained:
             raise ValueError("SOM must be trained before inference")
 
@@ -78,13 +108,12 @@ class InferenceMixin:
         return result
 
     def _create_inference_data_source(self, data_input):
-        if isinstance(data_input, str):
-            data_source = self.data_source_factory.create(data_input, None)
-        elif isinstance(data_input, (np.ndarray, cp.ndarray)):
-            data_source = self.data_source_factory.create(data_input, None)
-        else:
-            raise ValueError(f"Unsupported data input type: {type(data_input)}")
-        return data_source
+        if isinstance(data_input, (str, os.PathLike)):
+            return self.data_source_factory.create(os.fspath(data_input), None)
+        self.check_feature_names(data_input, "infer")
+        if not isinstance(data_input, (np.ndarray, cp.ndarray)):
+            data_input = as_feature_matrix(data_input, "infer")
+        return self.data_source_factory.create(data_input, None)
 
     def _infer_gpu(
         self,
@@ -198,21 +227,7 @@ class InferenceMixin:
                 for idx in range(2)
             ]
 
-        from ..data.cpugpu_fast_loader import CPUGPUFastLoader
-
-        if hasattr(data_source, "get_path"):
-            loader = CPUGPUFastLoader(
-                array_path=data_source.get_path(),
-                chunk_size=chunk_size,
-                randomize_chunks=False,
-            )
-        else:
-            loader = CPUGPUFastLoader(
-                ram_data=data_source.get_reference(),
-                ram_mode=True,
-                chunk_size=chunk_size,
-                randomize_chunks=False,
-            )
+        loader = _rows_loader(data_source, chunk_size)
 
         total_chunks = (n_samples + chunk_size - 1) // chunk_size
 
@@ -292,21 +307,7 @@ class InferenceMixin:
         n_samples,
         verbose,
     ):
-        from ..data.cpugpu_fast_loader import CPUGPUFastLoader
-
-        if hasattr(data_source, "get_path"):
-            loader = CPUGPUFastLoader(
-                array_path=data_source.get_path(),
-                chunk_size=chunk_size,
-                randomize_chunks=False,
-            )
-        else:
-            loader = CPUGPUFastLoader(
-                ram_data=data_source.get_reference(),
-                ram_mode=True,
-                chunk_size=chunk_size,
-                randomize_chunks=False,
-            )
+        loader = _rows_loader(data_source, chunk_size)
 
         total_chunks = (n_samples + chunk_size - 1) // chunk_size
         use_pinned = zarr_output_array is not None

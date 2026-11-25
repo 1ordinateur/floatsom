@@ -23,7 +23,8 @@ from ..floatsom_params import (
 from ..data.sources.base import DataSource
 from ..data.factory import DataSourceFactory
 from ..processing.utils import find_bmus
-from .arrays import as_feature_matrix
+from .arrays import as_feature_matrix, feature_names_of
+from ..progress import show_progress
 from .persistence import load_som, save_som
 from .inference import InferenceMixin
 
@@ -104,6 +105,9 @@ class FloatSOM(InferenceMixin):
                 momentum_type = "adaptive" if self.use_adaptive_momentum else "scheduled"
                 logger.info(f"  - Momentum: enabled ({momentum_type})")
     
+    # Column names of the training DataFrame, or None. train_som and load set them.
+    feature_names: Optional[List[str]] = None
+
     def train(self, data_input: Union[np.ndarray, cp.ndarray, str]) -> Dict[str, Any]:
         """
         Main training loop using pluggable components with momentum support
@@ -115,6 +119,8 @@ class FloatSOM(InferenceMixin):
         Returns:
             training_stats: Dictionary with training statistics
         """
+        if self.verbose:
+            show_progress()
         start_time = time.time() if self.verbose else None
 
         perf_total_start = time.perf_counter()
@@ -537,7 +543,8 @@ class FloatSOM(InferenceMixin):
             data: Input data (n_samples, n_features): NumPy, CuPy, pandas or a nested list
 
         Returns:
-            bmu_indices: BMU index of each sample (CuPy array)
+            bmu_indices: BMU index of each sample. A CuPy array for CuPy input,
+            and a NumPy array for other input.
         """
         return self._find_bmus(data, return_distances=False, caller="predict")
 
@@ -545,12 +552,14 @@ class FloatSOM(InferenceMixin):
         """Return BMUs (and distances) for ``data`` with the configured metric, in chunks."""
         if not self.is_trained:
             raise ValueError(f"SOM must be trained before {caller}")
+        self.check_feature_names(data, caller)
+        on_gpu = isinstance(data, cp.ndarray)
         query = cp.asarray(as_feature_matrix(data, caller), dtype=cp.float32)
         self.weights = cp.asarray(self.weights, dtype=cp.float32)
         self.check_feature_count(int(query.shape[1]), caller)
         processing = self.params.processing_config
         node_chunk_size = min(900, self.weights.shape[0]) if self.weights.size else 1
-        return find_bmus(
+        result = find_bmus(
             batch=query,
             weights=self.weights,
             verbose=self.verbose,
@@ -560,6 +569,11 @@ class FloatSOM(InferenceMixin):
             node_chunk_size=node_chunk_size,
             **(processing.distance_metric_params or {}),
         )
+        if on_gpu:
+            return result
+        if isinstance(result, tuple):
+            return tuple(cp.asnumpy(part) for part in result)
+        return cp.asnumpy(result)
 
     def check_feature_count(self, n_features: int, caller: str) -> None:
         """Raise ValueError if ``n_features`` differs from the trained weights."""
@@ -569,6 +583,27 @@ class FloatSOM(InferenceMixin):
                 f"{caller} got data with {n_features} features, but the SOM was trained "
                 f"with {trained_features} features. Use the same columns, in the same order."
             )
+
+    def check_feature_names(self, data, caller: str) -> None:
+        """Raise ValueError if the DataFrame columns of ``data`` differ from the training columns.
+
+        There is no check when the SOM has no column names or ``data`` is not a DataFrame.
+        """
+        names = feature_names_of(data)
+        trained = self.feature_names
+        if trained is None or names is None or names == trained:
+            return
+        if sorted(names) == sorted(trained):
+            raise ValueError(
+                f"{caller} got the training columns in a different order. Select them in the "
+                f"training order with data[som.feature_names], which is {trained}."
+            )
+        missing = [name for name in trained if name not in names]
+        unknown = [name for name in names if name not in trained]
+        raise ValueError(
+            f"{caller} got columns that are not the training columns. Missing: {missing}. "
+            f"Not in the training data: {unknown}. The SOM was trained with columns {trained}."
+        )
     
     def get_weights(self, as_numpy: bool = True) -> Union[np.ndarray, cp.ndarray]:
         """

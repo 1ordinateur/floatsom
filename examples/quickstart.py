@@ -11,14 +11,14 @@ def main():
     data = np.random.default_rng(42).normal(size=(2000, 8)).astype(np.float32)
 
     som = floatsom.train_som(data, seed=42)
-    clusters = som.predict(data).get()
-    print(f"Assigned {len(clusters)} observations to {som.get_weights().shape[0]} SOM nodes.")
+    nodes = som.predict(data)                      # NumPy array: SOM node of each row
+    print(f"Assigned {len(nodes)} rows to {som.get_weights().shape[0]} SOM nodes.")
 
     with tempfile.TemporaryDirectory() as folder:
         path = som.save(Path(folder) / "quickstart.floatsom")
         loaded = floatsom.FloatSOM.load(path)
-        same = np.array_equal(loaded.predict(data).get(), clusters)
-        print(f"Saved and loaded the model; the same assignments: {same}.")
+        same = np.array_equal(loaded.predict(data), nodes)
+        print(f"Saved and loaded the model; the same nodes: {same}.")
 
 
 if __name__ == "__main__":

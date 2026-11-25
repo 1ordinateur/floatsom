@@ -1,39 +1,71 @@
 # Ray execution
 
-Install Ray with the `ray` extra, for example `pip install '.[cuda12,ray]'`.
-Single-GPU training does not need Ray.
+Use Ray to train on several GPUs or several nodes. One GPU does not need Ray;
+use `train_som` for one GPU.
 
-Set `ProcessingConfig(method="batch", chunk_size=..., ray_config=RayConfig(...))`
-to select `RayBatchProcessor`. Omitting `ray_config` selects local GPU batch
-processing. `RayConfig` is defined in `floatsom.floatsom_params`; its `chunk_size`
-must also be specified.
+## Install
 
-The Ray cluster must expose GPU resources. For multiple nodes, start the cluster
-using the scheduler and networking setup for your HPC system, then connect the
-training process to it. Do not rely on a local Ray instance to discover other
-allocated nodes automatically.
-
-- `storage_path` is the shared staging location accessible to the workers.
-- `local_storage_path` is the worker-local staging/cache location. Provision enough
-  space for each worker's shards; it is distinct from the shared dataset store.
-- Choose GPU count and chunk sizes to fit the allocation and available VRAM.
-  Chunk sizes, buffering and staging requirements depend on feature count and
-  the selected processing mode.
-- NCCL is used for GPU collective operations. Install the CUDA extra matching
-  the cluster's toolkit, and ensure its network and GPU transport requirements
-  are satisfied on every node.
-
-Full-batch parity, random selection and color processing have separate test
-coverage. Results for one processing mode should not be assumed to establish
-parity for every configuration. The publication's execution-path concordance
-analysis reports the evaluated full-sampling settings.
-
-Run the distributed tests with a GPU-enabled environment:
+Add the `ray` extra, for example:
 
 ```bash
-python -m pytest tests/floatsom/test_ray_processor_parity.py tests/floatsom/test_gpu_scaling.py
+pip install "floatsom[cuda12,ray] @ git+https://github.com/1ordinateur/floatsom.git"
 ```
 
-Single- versus multi-GPU comparisons require at least two usable GPUs. The test
-fixtures release a Ray instance they start themselves, while preserving an
-instance initialized by the caller.
+## Train on several GPUs
+
+Give a `RayConfig` to `ProcessingConfig`. FloatSOM then uses Ray for the
+batch processing:
+
+```python
+from floatsom import (
+    FloatSOMParams, ProcessingConfig, RayConfig, TopologyConfig, create_floatsom,
+)
+
+ray_config = RayConfig(
+    chunk_size=1_000_000,
+    storage_path="/shared/floatsom_staging",       # a folder that all the workers can read
+    local_storage_path="/local/floatsom_cache",    # a fast folder on each node
+    num_gpus=4,                                    # omit to use all visible GPUs
+)
+params = FloatSOMParams(
+    input_dim=40,
+    total_iterations=50,
+    seed=42,
+    processing_config=ProcessingConfig(
+        method="batch", chunk_size=1_000_000, ray_config=ray_config,
+    ),
+    topology_config=TopologyConfig(topology_type="hexagonal", grid_size=20),
+)
+som = create_floatsom(params)
+som.train("cells.zarr")
+som.save("cells.floatsom")
+```
+
+After training, use `som` as the [user guide](user_guide.md#use-the-results)
+shows. A loaded model uses one GPU.
+
+## Settings
+
+- `RayConfig` needs `chunk_size`, `storage_path` and `local_storage_path`.
+  Give `ProcessingConfig.chunk_size` too.
+- `storage_path` is the shared staging folder that the workers can read.
+- `local_storage_path` is the staging and cache folder on each worker. Give
+  it enough space for the shards of each worker. It is not the shared data
+  store.
+- Select the GPU count and the chunk sizes to fit the allocation and the
+  GPU memory. The chunk sizes, the buffers and the staging space depend on
+  the feature count and the processing mode.
+- `ray_address` connects to a Ray cluster that is already running.
+
+## Clusters and several nodes
+
+The Ray cluster must give GPU resources. For several nodes, start the
+cluster with the scheduler and network setup of your HPC system. Then
+connect the training process to it with `ray_address`. A local Ray instance
+does not find the other nodes of your allocation by itself.
+
+NCCL does the GPU collective operations. Install the CUDA extra that agrees
+with the toolkit of the cluster. Make sure that each node has the network and
+GPU transport that NCCL needs.
+
+For the distributed tests, see the [developer notes](developer_notes.md#tests).
