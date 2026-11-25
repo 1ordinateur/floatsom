@@ -1,7 +1,7 @@
 """Make a 2-D float32 feature matrix from user data, with clear errors."""
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import cupy as cp
 import numpy as np
@@ -45,11 +45,15 @@ def as_feature_matrix(data, caller: str):
     return matrix
 
 
-def feature_names_of(data) -> Optional[List[str]]:
-    """Return the column names of a DataFrame as strings, or None for other data."""
-    if _is_dataframe(data):
-        return [str(column) for column in data.columns]
-    return None
+def feature_names_of(data) -> Optional[List[Union[str, int]]]:
+    """Return the column labels of a DataFrame, or None for other data.
+
+    A str or int label stays as it is, so data[names] selects the columns. Other labels
+    (for example tuples) become str, so that the model file can store them in JSON.
+    """
+    if not _is_dataframe(data):
+        return None
+    return [label if isinstance(label, (str, int)) else str(label) for label in data.columns.tolist()]
 
 
 def _is_dataframe(data) -> bool:

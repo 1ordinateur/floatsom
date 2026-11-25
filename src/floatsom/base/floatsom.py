@@ -5,6 +5,7 @@ FloatSOM - Flexible Self-Organizing Map with configurable sampling and processin
 import cupy as cp
 import numpy as np
 import time
+from collections import Counter
 from pathlib import Path
 import logging
 import warnings
@@ -24,7 +25,7 @@ from ..data.sources.base import DataSource
 from ..data.factory import DataSourceFactory
 from ..processing.utils import find_bmus
 from .arrays import as_feature_matrix, feature_names_of
-from ..progress import show_progress
+from ..progress import progress_logging
 from .persistence import load_som, save_som
 from .inference import InferenceMixin
 
@@ -106,7 +107,7 @@ class FloatSOM(InferenceMixin):
                 logger.info(f"  - Momentum: enabled ({momentum_type})")
     
     # Column names of the training DataFrame, or None. train_som and load set them.
-    feature_names: Optional[List[str]] = None
+    feature_names: Optional[List[Union[str, int]]] = None
 
     def train(self, data_input: Union[np.ndarray, cp.ndarray, str]) -> Dict[str, Any]:
         """
@@ -119,8 +120,11 @@ class FloatSOM(InferenceMixin):
         Returns:
             training_stats: Dictionary with training statistics
         """
-        if self.verbose:
-            show_progress()
+        with progress_logging(self.verbose):
+            return self._train(data_input)
+
+    def _train(self, data_input: Union[np.ndarray, cp.ndarray, str]) -> Dict[str, Any]:
+        """Run the training loop; see train()."""
         start_time = time.time() if self.verbose else None
 
         perf_total_start = time.perf_counter()
@@ -593,7 +597,7 @@ class FloatSOM(InferenceMixin):
         trained = self.feature_names
         if trained is None or names is None or names == trained:
             return
-        if sorted(names) == sorted(trained):
+        if Counter(names) == Counter(trained):
             raise ValueError(
                 f"{caller} got the training columns in a different order. Select them in the "
                 f"training order with data[som.feature_names], which is {trained}."

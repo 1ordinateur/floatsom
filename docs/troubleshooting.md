@@ -29,6 +29,6 @@ tells you how to fix a problem that it finds.
 
 | Message or problem | Fix |
 | --- | --- |
-| `verbose=True` shows nothing | Configure Python logging at level INFO, for example `logging.basicConfig(level=logging.INFO)`. FloatSOM adds a handler only when your program has none. |
+| `verbose=True` shows nothing | A log handler in your program has a level above INFO. Set the level of that handler to INFO. |
 | Too many clusters | `predict` gives SOM nodes. Make metaclusters from the nodes; see [metaclusters](user_guide.md#metaclusters). |
 | `reform_grid=True` is slow on AMD | RAPIDS has no AMD build, so FloatSOM uses a CPU fallback (scikit-learn PCA and the networkx ForceAtlas2 layout). The time and memory increase as the square of the node count: about 40 s for 1024 nodes, and about 1 h and 8 GB of RAM for 10,000 nodes. |

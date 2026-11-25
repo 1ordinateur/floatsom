@@ -151,9 +151,9 @@ zarr.save_array("cells.zarr", cells[markers].to_numpy(np.float32))
 
 ## Progress and repeatable results
 
-- `train_som(..., verbose=True)` shows the training progress. If your program
-  does not configure Python logging, FloatSOM adds a log handler that prints
-  the progress.
+- `verbose=True` in `train_som`, or `som.infer(..., verbose=True)`, shows the
+  progress of that call. If your program does not configure Python logging,
+  FloatSOM adds a log handler for that call only.
 - `train_som(..., seed=42)` makes the random parts (initialization and
   sampling) the same in each run. Use the same data, settings and GPU type
   to get repeatable results.

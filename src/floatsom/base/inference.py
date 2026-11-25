@@ -7,6 +7,7 @@ import numpy as np
 
 from ..data.sources.array import ArrayDataSource
 from .arrays import as_feature_matrix
+from ..progress import progress_logging
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,11 @@ class InferenceMixin:
             raise ValueError("SOM must be trained before inference")
 
         verbose = verbose if verbose is not None else self.verbose
+        with progress_logging(verbose):
+            return self._infer(data_input, output_path, chunk_size, use_cuda_streams, verbose)
+
+    def _infer(self, data_input, output_path, chunk_size, use_cuda_streams, verbose):
+        """Find the BMUs in chunks; see infer()."""
         if chunk_size <= 0:
             raise ValueError(f"chunk_size must be > 0, got {chunk_size}.")
 
