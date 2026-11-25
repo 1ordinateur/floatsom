@@ -90,3 +90,13 @@ def test_norm_p_float32_range(scale, p):
     np.testing.assert_allclose(distances, expected, rtol=1e-4)
     bmus = find_bmus(cp.asarray(batch), cp.asarray(weights), metric="norm_p", p=p)
     np.testing.assert_array_equal(host(bmus), expected.argmin(axis=1))
+
+
+def test_norm_p_float64_data_keeps_p_in_float64():
+    # float32 cannot store p = 3.1 exactly; a float32 p gives a relative error near 1e-7.
+    rng = np.random.default_rng(13)
+    batch = rng.normal(size=(8, 4))
+    weights = rng.normal(size=(6, 4))
+    distances = host(calculate_distances(cp.asarray(batch), cp.asarray(weights), "norm_p", p=3.1))
+    assert distances.dtype == np.float64
+    np.testing.assert_allclose(distances, lp_distances_float64(batch, weights, 3.1), rtol=1e-10)
