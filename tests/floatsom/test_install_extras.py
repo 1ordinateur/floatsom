@@ -94,11 +94,21 @@ def test_package_metadata_is_ready_for_pypi():
     assert PROJECT["description"] != "FloatSOM core library"
 
 
-def fake_nvidia_smi(directory, cuda_version):
-    """Write an nvidia-smi script that prints the header of the real tool."""
+def fake_nvidia_smi(directory, cuda_version, compute_caps=("8.0",)):
+    """Write an nvidia-smi script that acts as the real tool.
+
+    With no argument it prints the header. With
+    ``--query-gpu=compute_cap --format=csv,noheader`` it prints one compute
+    capability for each GPU.
+    """
     script = directory / "nvidia-smi"
+    caps = "".join(f"echo '{cap}'\n" for cap in compute_caps)
     script.write_text(
         "#!/bin/sh\n"
+        'if [ "$1" = "--query-gpu=compute_cap" ] && [ "$2" = "--format=csv,noheader" ]; then\n'
+        f"{caps}"
+        "exit 0\n"
+        "fi\n"
         "echo '+-----------------------------------------------------------------------------+'\n"
         f"echo '| NVIDIA-SMI 580.65.06    Driver Version: 580.65.06    CUDA Version: {cuda_version}  |'\n"
     )
@@ -147,6 +157,21 @@ def test_check_environment_gives_the_install_command_for_the_driver(
     assert all(f"floatsom[{extra}]" in problem for problem in commands)
     assert not any(f"floatsom[{other_extra}]" in problem for problem in commands)
     assert any(f"CUDA {cuda_version}" in problem for problem in report["problems"])
+
+
+@pytest.mark.parametrize("compute_caps", [("7.0",), ("7.0", "8.0"), ("6.0",)])
+def test_check_environment_gives_cuda12_for_a_gpu_that_cuda13_does_not_support(
+    tmp_path, compute_caps
+):
+    # CUDA 13 has no support for compute capability below 7.5 (for example
+    # V100 7.0 or P100 6.0), also with a driver for CUDA 13.
+    fake_nvidia_smi(tmp_path, "13.0", compute_caps)
+    report = environment_report(tmp_path)
+    commands = [problem for problem in report["problems"] if "pip install" in problem]
+    assert commands, report["problems"]
+    assert all("floatsom[cuda12]" in problem for problem in commands)
+    assert not any("floatsom[cuda13]" in problem for problem in commands)
+    assert any(min(compute_caps) in problem for problem in commands)
 
 
 def test_check_environment_says_that_an_old_driver_needs_an_update(tmp_path):

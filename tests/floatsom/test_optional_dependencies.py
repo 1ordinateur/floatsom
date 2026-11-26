@@ -6,6 +6,7 @@ machine without these packages. Only the external package is blocked; the
 floatsom code under test runs unchanged.
 """
 
+import os
 import subprocess
 import sys
 import textwrap
@@ -19,8 +20,11 @@ CUPY_MODULES = ("cupy", "cupyx")
 RAY_MODULES = ("ray",)
 
 
-def run_python(code, blocked=()):
-    """Run ``code`` in a new interpreter with the ``blocked`` modules absent."""
+def run_python(code, blocked=(), path=None):
+    """Run ``code`` in a new interpreter with the ``blocked`` modules absent.
+
+    ``path`` replaces PATH, for example to hide the nvidia-smi of a GPU host.
+    """
     prelude = "import sys\n" + "".join(
         f"sys.modules[{name!r}] = None\n" for name in blocked
     )
@@ -29,6 +33,7 @@ def run_python(code, blocked=()):
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
+        env=None if path is None else {**os.environ, "PATH": str(path)},
         timeout=300,
     )
 
@@ -118,7 +123,8 @@ def test_ray_is_an_optional_extra():
     assert any(item.startswith("ray") for item in project["optional-dependencies"]["ray"])
 
 
-def test_check_environment_reports_missing_cupy_and_ray():
+def test_check_environment_reports_missing_cupy_and_ray(tmp_path):
+    # PATH has no nvidia-smi, so the report gives the general CuPy hint.
     result = run_python(
         """
         import json
@@ -127,6 +133,7 @@ def test_check_environment_reports_missing_cupy_and_ray():
         print(json.dumps(report))
         """,
         blocked=CUPY_MODULES + RAY_MODULES,
+        path=tmp_path,
     )
     assert_ok(result)
     import json
@@ -138,10 +145,12 @@ def test_check_environment_reports_missing_cupy_and_ray():
     assert any("floatsom[cuda12]" in problem for problem in report["problems"])
 
 
-def test_module_command_prints_report_and_fails_without_cupy():
+def test_module_command_prints_report_and_fails_without_cupy(tmp_path):
+    # PATH has no nvidia-smi, so the report gives the general CuPy hint.
     result = run_python(
         "import runpy\nrunpy.run_module('floatsom', run_name='__main__')",
         blocked=CUPY_MODULES + RAY_MODULES,
+        path=tmp_path,
     )
     assert result.returncode == 1
     assert "CuPy" in result.stdout
