@@ -134,29 +134,11 @@ class TestProcessorFactoryRouting:
             som = create_floatsom(params)
             assert isinstance(som.processor, ColorsProcessor)
 
-    def test_minisom_processing_creates_minisom_adapter(self):
-        """MiniSOM processing method should create MiniSOMAdapter."""
-        try:
-            import minisom
-            from floatsom.adapters.minisom_adapter import MiniSOMAdapter
-            minisom_available = True
-        except ImportError:
-            minisom_available = False
+    def test_available_processing_methods_have_no_minisom(self):
+        """Only the FloatSOM processors are available."""
+        from floatsom.base.floatsom_factories import get_available_processing_methods
 
-        if not minisom_available:
-            pytest.skip("MiniSOM package not available")
-
-        params = FloatSOMParams(
-            input_dim=10,
-            topology_config=TopologyConfig(topology_type="grid"),
-            processing_config=ProcessingConfig(
-                method="minisom",
-                chunk_size=1000
-            )
-        )
-
-        som = create_floatsom(params)
-        assert isinstance(som, MiniSOMAdapter)
+        assert get_available_processing_methods() == ["colors", "batch"]
 
 
 class TestTopologyFactoryRouting:
@@ -501,25 +483,6 @@ class TestFactoryErrorHandling:
                 topology_config=TopologyConfig(topology_type="invalid_type"),
                 processing_config=ProcessingConfig(chunk_size=1000)
             )
-
-    def test_minisom_with_mst_raises_error(self):
-        """MiniSOM with MST topology should raise appropriate error."""
-        try:
-            import minisom
-        except ImportError:
-            pytest.skip("MiniSOM package not available")
-
-        params = FloatSOMParams(
-            input_dim=10,
-            topology_config=TopologyConfig(topology_type="mst"),
-            processing_config=ProcessingConfig(
-                method="minisom",
-                chunk_size=1000
-            )
-        )
-
-        with pytest.raises(ValueError, match="MiniSOM only supports"):
-            create_floatsom(params)
 
 
 class TestFactoryArchitectureSummary:

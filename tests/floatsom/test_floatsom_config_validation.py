@@ -88,27 +88,6 @@ class TestInvalidConfigurationRejection:
                 processing_config=ProcessingConfig(chunk_size=1000)
             )
 
-    def test_minisom_rejects_mst_topology(self):
-        """MiniSOM processing should reject MST topology."""
-        try:
-            import minisom
-        except ImportError:
-            pytest.skip("MiniSOM package not available")
-
-        from floatsom.base.floatsom_factories import create_floatsom
-
-        params = FloatSOMParams(
-            input_dim=10,
-            topology_config=TopologyConfig(topology_type="mst"),
-            processing_config=ProcessingConfig(
-                method="minisom",
-                chunk_size=1000
-            )
-        )
-
-        with pytest.raises(ValueError, match="MiniSOM only supports 'grid' and 'hexagonal' topologies"):
-            create_floatsom(params)
-
     def test_batch_requires_valid_batch_mode(self):
         """Batch processing with invalid batch_mode should fail."""
         with pytest.raises(ValueError, match="Invalid batch_mode"):
@@ -413,7 +392,7 @@ class TestProcessingMethodValidation:
 
     def test_valid_processing_methods(self):
         """All valid processing methods should be accepted."""
-        valid_methods = ["batch", "colors", "minisom"]
+        valid_methods = ["batch", "colors"]
 
         for method in valid_methods:
             config_kwargs = {"method": method, "chunk_size": 1000}
@@ -489,7 +468,7 @@ class TestNormalizationValidation:
         """All valid normalization methods should be accepted."""
         valid_methods = [
             "count_based", "weighted", "hybrid", "clamped_weighted",
-            "local", "adaptive", "none", "minisom_weighted"
+            "local", "adaptive", "none", "xpysom"
         ]
 
         for method in valid_methods:
