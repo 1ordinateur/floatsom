@@ -73,7 +73,9 @@ def test_package_sources_and_docs_do_not_mention_minisom():
         files.extend([path] if path.is_file() else (p for p in path.rglob("*") if p.is_file()))
     hits = []
     for path in files:
-        if "__pycache__" in path.parts:
+        # Skip build output: "pip install -e ." and "python -m build" write
+        # src/floatsom.egg-info, and its SOURCES.txt lists the test file names.
+        if "__pycache__" in path.parts or any(part.endswith(".egg-info") for part in path.parts):
             continue
         name = path.relative_to(REPO_ROOT).as_posix()
         for line in path.read_bytes().decode("utf-8", errors="ignore").splitlines():
