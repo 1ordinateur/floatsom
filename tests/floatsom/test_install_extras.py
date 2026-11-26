@@ -7,9 +7,11 @@ floatsom code that reads its output runs unchanged.
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
+import time
 import tomllib
 from pathlib import Path
 
@@ -52,6 +54,15 @@ def test_ray_gpu_extra_adds_ray_and_nccl(cuda):
 
 def test_ray_extra_installs_only_ray():
     assert set(requirements("ray")) == {"ray"}
+
+
+def test_ray_extra_excludes_ray_that_needs_torch_for_nccl():
+    # Ray 2.56 and later find the NCCL backend only when PyTorch imports.
+    # FloatSOM uses CuPy for NCCL, so these versions fail with no PyTorch.
+    ray = requirements("ray")["ray"]
+    assert ray.specifier.contains("2.47.1")
+    assert ray.specifier.contains("2.55.1")
+    assert not ray.specifier.contains("2.56.0")
 
 
 def test_networkx_is_a_core_dependency():
@@ -117,7 +128,13 @@ def environment_report(path_dir):
 
 @pytest.mark.parametrize(
     "cuda_version, extra, other_extra",
-    [("12.4", "cuda12", "cuda13"), ("13.0", "cuda13", "cuda12"), ("13.2", "cuda13", "cuda12")],
+    [
+        ("12.4", "cuda12", "cuda13"),
+        ("13.0", "cuda13", "cuda12"),
+        ("13.2", "cuda13", "cuda12"),
+        # A newer driver runs the CUDA 13 libraries.
+        ("14.0", "cuda13", "cuda12"),
+    ],
 )
 def test_check_environment_gives_the_install_command_for_the_driver(
     tmp_path, cuda_version, extra, other_extra
@@ -138,6 +155,16 @@ def test_check_environment_says_that_an_old_driver_needs_an_update(tmp_path):
     assert report["driver_cuda"] == "11.8"
     assert any("11.8" in problem and "update" in problem.lower() for problem in report["problems"])
     assert not any("floatsom[cuda" in problem for problem in report["problems"])
+
+
+def test_check_environment_does_not_wait_long_for_a_hung_nvidia_smi(tmp_path):
+    script = tmp_path / "nvidia-smi"
+    script.write_text(f"#!/bin/sh\nexec {shutil.which('sleep')} 120\n")
+    script.chmod(0o755)
+    start = time.monotonic()
+    report = environment_report(tmp_path)
+    assert time.monotonic() - start < 25
+    assert report["driver_cuda"] is None
 
 
 def test_check_environment_without_nvidia_smi_gives_the_general_hint(tmp_path):
