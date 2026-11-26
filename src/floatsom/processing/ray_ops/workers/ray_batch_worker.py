@@ -498,7 +498,6 @@ class RayBatchWorker(RayPipelineBaseWorker):
             normalization=params.processing_config.normalization,
             learning_rate=params.current_learning_rate,
             current_weights=self.gpu_weights,
-            full_bmu_counts=None,
             norm_alpha=params.processing_config.norm_alpha,
             norm_clamp_factor=params.processing_config.norm_clamp_factor,
             norm_percentile=params.processing_config.norm_percentile,

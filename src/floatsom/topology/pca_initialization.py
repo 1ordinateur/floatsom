@@ -24,8 +24,8 @@ def pca_weights_init(data: Union[np.ndarray, 'cp.ndarray'],
     Initialize SOM weights to span the first two principal components.
     
     This initialization doesn't depend on random processes and
-    makes the training process converge faster. This method follows
-    the MiniSom approach of creating a regular grid in PC space.
+    makes the training process converge faster. This method makes
+    a regular grid in PC space.
     
     It is strongly recommended to normalize the data before initializing
     the weights and use the same normalization for the training data.

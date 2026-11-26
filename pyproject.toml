@@ -34,9 +34,6 @@ dev = ["pytest>=8", "build>=1.2", "networkx>=3.4"]
 # AMD GPUs: install CuPy for ROCm separately. RAPIDS has no AMD build, so
 # reform_grid uses the networkx ForceAtlas2 fallback.
 rocm = ["networkx>=3.4"]
-minisom = [
-    "minisom>=2.3.0",
-]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -9,12 +9,6 @@ from floatsom.sampling.random_selector import RandomSelector
 from floatsom.sampling.hdsssom_selector import HDSSSOMSelector
 from floatsom.processing.processor_factory import ProcessorFactory
 
-# Import MiniSOM adapter
-try:
-    from ..adapters.minisom_adapter import MiniSOMAdapter, MINISOM_AVAILABLE
-except ImportError:
-    MINISOM_AVAILABLE = False
-
 
 def create_floatsom(params, data=None):
     """
@@ -28,26 +22,11 @@ def create_floatsom(params, data=None):
             input_dim from data.shape[1].
 
     Returns:
-        FloatSOM instance or MiniSOMAdapter configured according to params.
+        FloatSOM instance configured according to params.
         Call ``train(data)`` on it.
     """
     # Extract configurations
     sampling_method = params.sampling_config.method
-    
-    # Handle MiniSOM processing specially - it's a complete SOM implementation
-    if params.processing_config.method == 'minisom':
-        if not MINISOM_AVAILABLE:
-            raise ImportError("MiniSOM package not available. Please install it with 'pip install minisom'")
-
-        # Validate topology compatibility
-        if params.topology_config.topology_type not in ['grid', 'hexagonal']:
-            raise ValueError(f"MiniSOM only supports 'grid' and 'hexagonal' topologies, got: {params.topology_config.topology_type}")
-        
-        # Get minisom_defaults flag from params if available
-        use_minisom_defaults = getattr(params, 'minisom_defaults', False)
-        
-        # Return MiniSOM adapter directly
-        return MiniSOMAdapter(params, use_default_hyperparams=use_minisom_defaults)
     
     # Create topology based on params
     topology = create_topology(params, data)
@@ -83,7 +62,7 @@ def get_available_processing_methods():
     """
     Return list of available processing methods
     """
-    return ['colors', 'batch', 'minisom']
+    return ['colors', 'batch']
 
 
 def get_available_topology_types():

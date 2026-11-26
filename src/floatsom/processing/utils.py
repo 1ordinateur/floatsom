@@ -387,7 +387,6 @@ def apply_normalization(accumulated_summed_updates: cp.ndarray,
                        normalization: str,
                        learning_rate: Optional[float] = None,
                        current_weights: Optional[cp.ndarray] = None,
-                       full_bmu_counts: Optional[cp.ndarray] = None,
                        norm_alpha: Optional[float] = None,
                        norm_clamp_factor: Optional[float] = None, 
                        norm_percentile: Optional[float] = None,
@@ -407,7 +406,6 @@ def apply_normalization(accumulated_summed_updates: cp.ndarray,
         normalization: Normalization method
         learning_rate: Current learning rate (optional, for mode-specific semantics)
         current_weights: Current weights (required for xpysom mode to form delta updates)
-        full_bmu_counts: BMU counts for minisom_weighted (optional)
         norm_alpha: Blend ratio for hybrid normalization
         norm_clamp_factor: Clamp factor for clamped_weighted normalization
         norm_percentile: Percentile threshold for local normalization
@@ -486,17 +484,6 @@ def apply_normalization(accumulated_summed_updates: cp.ndarray,
         log_denominator = cp.log1p(accumulated_influence_sum)  # log(1 + x)
         log_denominator = cp.maximum(log_denominator.reshape(-1, 1), 1e-10)
         normalized_updates = accumulated_summed_updates / log_denominator
-        
-    elif normalization == "minisom_weighted":
-        if full_bmu_counts is None:
-            raise ValueError("full_bmu_counts is required for minisom_weighted normalization")
-        # MiniSom-style weighted normalization that zeros out non-BMU nodes
-        denominator = cp.maximum(accumulated_influence_sum.reshape(-1, 1), 1e-10)
-        provisional_normalized_updates = accumulated_summed_updates / denominator
-        
-        # Apply MiniSom's characteristic: zero out updates for nodes that were never BMUs
-        is_bmu_node_in_full_batch = (full_bmu_counts.reshape(-1, 1) > 0)
-        normalized_updates = provisional_normalized_updates * is_bmu_node_in_full_batch
         
     elif normalization == "none":
         # In 'none' mode, we don't normalize by neighborhood influence.
@@ -938,7 +925,6 @@ def apply_weight_updates_with_momentum(
         normalization=params.normalization,
         learning_rate=params.learning_rate,
         current_weights=som_weights,
-        full_bmu_counts=None,
         norm_alpha=params.norm_alpha,
         norm_clamp_factor=params.norm_clamp_factor,
         norm_percentile=params.norm_percentile,
@@ -1052,13 +1038,6 @@ def update_weights_vectorized(data: cp.ndarray, bmus: cp.ndarray, influence_matr
             verbose=verbose
         )
     
-    # Pre-calculate full_bmu_counts for "minisom_weighted" normalization
-    full_bmu_counts = None
-    if normalization == "minisom_weighted":
-        full_bmu_counts = cp.zeros(total_nodes, dtype=cp.int32)
-        unique_bmus_total, counts_total = cp.unique(bmus, return_counts=True)
-        full_bmu_counts[unique_bmus_total] = counts_total
-    
     # Step 2: Apply normalization
     # Use total color set samples for normalization (not just the chunk size)
     normalized_updates = apply_normalization(
@@ -1068,7 +1047,6 @@ def update_weights_vectorized(data: cp.ndarray, bmus: cp.ndarray, influence_matr
         normalization=normalization,
         learning_rate=learning_rate,
         current_weights=weights,
-        full_bmu_counts=full_bmu_counts,
         norm_alpha=norm_alpha,
         norm_clamp_factor=norm_clamp_factor,
         norm_percentile=norm_percentile,

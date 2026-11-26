@@ -59,6 +59,8 @@ def load_som(path):
         )
 
     settings = metadata["params"]
+    # Files from older versions can hold this removed setting.
+    settings.pop("minisom_defaults", None)
     # A loaded SOM is for prediction on one GPU. The Ray paths of the training
     # machine are not valid here, and prediction does not need Ray.
     settings.setdefault("processing_config", {})["ray_config"] = None

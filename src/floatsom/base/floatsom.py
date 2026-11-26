@@ -751,7 +751,6 @@ class FloatSOM(InferenceMixin):
                 min_radius=self.params.final_radius,
                 radius_decay_factor=self.params.radius_decay_factor,
                 radius_warmup_iters=self.params.radius_warmup_iters,
-                use_minisom=False
             )
             schedule.append(radius)
         
@@ -770,7 +769,6 @@ class FloatSOM(InferenceMixin):
                 decay_type=self.params.lr_decay_type,
                 final_learning_rate=self.params.final_learning_rate,
                 lr_decay_factor=self.params.lr_decay_factor,
-                use_minisom=False
             )
             schedule.append(lr)
 

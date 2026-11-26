@@ -154,7 +154,7 @@ class ProcessingConfig:
     """Configuration for processing methods"""
     # General processing parameters
     chunk_size: Optional[int] = None  # None -> 50_000
-    method: str = "batch"  # Options: "colors", "batch", "minisom"
+    method: str = "batch"  # Options: "colors", "batch"
     
     # Distance metric configuration
     distance_metric: str = "euclidean"  # Options: "euclidean", "cosine", "manhattan", "norm_p"
@@ -201,7 +201,7 @@ class ProcessingConfig:
     ray_config: Optional[RayConfig] = None  # Ray configuration for multi-GPU processing
     
     # Weight update normalization
-    normalization: str = "xpysom"  # Options: "count_based", "weighted", "hybrid", "clamped_weighted", "local", "adaptive", "none", "minisom_weighted", "xpysom"
+    normalization: str = "xpysom"  # Options: "count_based", "weighted", "hybrid", "clamped_weighted", "local", "adaptive", "none", "xpysom"
     
     # Normalization parameters (no defaults - must be specified)
     norm_alpha: Optional[float] = None  # For hybrid normalization (blend ratio)
@@ -347,9 +347,6 @@ class FloatSOMParams:
     bitmap_recalc_threshold: float = 0.1
     toy_dataset_mode: bool = False
     
-    # MiniSOM integration parameters
-    minisom_defaults: bool = False  # Use MiniSOM default hyperparameters instead of FloatSOM defaults
-    
     # Dynamic runtime attributes (set during training)
     current_radius: Optional[float] = None
     current_learning_rate: Optional[float] = None
@@ -443,7 +440,7 @@ class FloatSOMParams:
             raise ValueError(f"Invalid sampling method: {self.sampling_config.method}. Must be one of {valid_sampling_methods}")
         
         # Validate processing method
-        valid_processing_methods = ["colors", "batch", "minisom"]
+        valid_processing_methods = ["colors", "batch"]
         if self.processing_config.method not in valid_processing_methods:
             raise ValueError(f"Invalid processing method: {self.processing_config.method}. Must be one of {valid_processing_methods}")
         
@@ -533,7 +530,6 @@ class FloatSOMParams:
             "local",
             "adaptive",
             "none",
-            "minisom_weighted",
             "xpysom",
         ]
         if self.processing_config.normalization not in valid_normalizations:
@@ -669,7 +665,7 @@ class FloatSOMParams:
     
 # Utility functions for decay calculations (preserved from original)
 def calculate_radius(current_iteration: int, total_iterations: int, initial_radius: float,
-                    decay_type: str, min_radius: float = 0.01, use_minisom: bool = False,
+                    decay_type: str, min_radius: float = 0.01,
                     radius_warmup_iters: int = 0, radius_decay_factor: float = 1.0, 
                     radius_decay_type: Optional[str] = None) -> float:
     """Calculate the current neighbourhood radius for one training iteration.
@@ -684,15 +680,6 @@ def calculate_radius(current_iteration: int, total_iterations: int, initial_radi
     Gaussian curves. Higher values make those curves slower/gentler, while
     lower values make them faster/steeper.
     """
-    import inspect
-    
-    # Auto-detect MiniSom context if not explicitly specified
-    if not use_minisom:
-        for frame in inspect.stack():
-            if 'minisom' in frame.filename.lower():
-                use_minisom = True
-                break
-    
     # During warmup period, keep radius constant
     if current_iteration < radius_warmup_iters:
         return initial_radius
@@ -758,26 +745,13 @@ def calculate_radius(current_iteration: int, total_iterations: int, initial_radi
 
 def calculate_learning_rate(current_iteration: int, total_iterations: int, initial_learning_rate: float,
                            decay_type: str, final_learning_rate: float = 0.01,
-                           use_minisom: bool = False, lr_decay_factor: float = 8.0,
+                           lr_decay_factor: float = 8.0,
                            lr_decay_type: Optional[str] = None) -> float:
     """Calculate the current learning rate based on iteration and decay type"""
     
     # Use lr_decay_type if provided, otherwise use decay_type
     if lr_decay_type is not None:
         decay_type = lr_decay_type
-    
-    # Special case for MiniSom compatibility
-    if use_minisom:
-        t = current_iteration / total_iterations
-        
-        if decay_type == "exponential":
-            return max(initial_learning_rate * np.exp(-5 * t), 0.01)
-        elif decay_type == "linear":
-            return max(initial_learning_rate * (1 - t), 0.01)
-        elif decay_type == "asymptotic":
-            return max(initial_learning_rate / (1 + t), 0.01)
-        else:
-            return max(initial_learning_rate / (1 + t), 0.01)
     
     # FloatSOM implementations with configurable decay
     if decay_type == "exponential":
@@ -818,27 +792,26 @@ def calculate_learning_rate(current_iteration: int, total_iterations: int, initi
         raise ValueError(f"Unknown decay type: {decay_type}")
 
 def precompute_all_radii(total_iterations: int, initial_radius: float, decay_type: str, 
-                        use_minisom: bool = False, radius_decay_factor: float = 1.0, 
+                        radius_decay_factor: float = 1.0, 
                         radius_warmup_iters: int = 0) -> List[float]:
     """Pre-compute all radius values for consistent topology caching"""
     radii_list = []
     for iteration in range(total_iterations):
         radius = calculate_radius(iteration, total_iterations, initial_radius, decay_type, 
-                                 use_minisom=use_minisom, radius_decay_factor=radius_decay_factor, 
+                                 radius_decay_factor=radius_decay_factor, 
                                  radius_warmup_iters=radius_warmup_iters)
         radii_list.append(round(radius, 3))
     return radii_list
 
 def precompute_all_learning_rates(total_iterations: int, initial_learning_rate: float,
                                  decay_type: str, final_learning_rate: float = 0.01,
-                                 use_minisom: bool = False,
                                  lr_decay_factor: float = 8.0) -> List[float]:
     """Pre-compute all learning rate values for the entire training process"""
     learning_rates_list = []
     for iteration in range(total_iterations):
         lr = calculate_learning_rate(iteration, total_iterations, initial_learning_rate, 
                                    decay_type, final_learning_rate=final_learning_rate,
-                                   use_minisom=use_minisom, lr_decay_factor=lr_decay_factor)
+                                   lr_decay_factor=lr_decay_factor)
         learning_rates_list.append(lr)
     return learning_rates_list
 

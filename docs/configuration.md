@@ -25,9 +25,6 @@ stats = som.train(data)    # data: an array, or a path to a file (see the user g
 
 `train` changes `som` and returns a dict with the training statistics. After
 training, use `som` as the [user guide](user_guide.md#use-the-results) shows.
-With `ProcessingConfig.method="minisom"`, `create_floatsom` gives a MiniSOM
-adapter. It has `train`, `predict` and `get_weights`, but no `map_vectors`,
-`infer`, `save` or column-name check.
 
 Each setting has a default, so give only the settings that you change. The
 exception is `RayConfig`, which needs `chunk_size`, `storage_path` and
@@ -51,7 +48,6 @@ Keep the default unless you have a reason to change it.
 | --- | --- |
 | `ProcessingConfig.method="batch"` (default) | Most work: batch SOM training on the GPU. |
 | `ProcessingConfig.method="colors"` | Advanced. Colour-set processing, an alternative update method. |
-| `ProcessingConfig.method="minisom"` | Comparison with MiniSOM. Needs the `minisom` extra. |
 | `ProcessingConfig.batch_mode="full_batch"` (default) | One update with all the rows of each iteration. |
 | `ProcessingConfig.batch_mode="minibatch"` | An update after each chunk of `chunk_size` rows. |
 | `ProcessingConfig.chunk_size` | CUDA out-of-memory errors: make it smaller. `train_som` selects it from the GPU memory. |

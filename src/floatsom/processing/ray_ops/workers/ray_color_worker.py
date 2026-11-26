@@ -1452,7 +1452,6 @@ class RayColorWorker(RayPipelineBaseWorker):
             normalization=config.normalization,
             learning_rate=self.params.current_learning_rate,
             current_weights=self.gpu_weights,
-            full_bmu_counts=None,
             norm_alpha=config.norm_alpha,
             norm_clamp_factor=config.norm_clamp_factor,
             norm_percentile=config.norm_percentile,

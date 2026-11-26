@@ -504,7 +504,6 @@ class ColorsProcessor(ProcessingMethod):
             normalization=config.normalization,
             learning_rate=training_params.learning_rate,
             current_weights=weights,
-            full_bmu_counts=None,
             norm_alpha=config.norm_alpha,
             norm_clamp_factor=config.norm_clamp_factor,
             norm_percentile=config.norm_percentile,
