@@ -213,3 +213,21 @@ def test_load_rejects_a_file_that_save_did_not_write(tmp_path):
     np.savez(path, weights=np.zeros((4, 2)))
     with pytest.raises(ValueError, match="FloatSOM.save"):
         FloatSOM.load(path)
+
+
+def test_load_ignores_the_removed_minisom_defaults_setting(tmp_path):
+    """Files saved before the MiniSOM removal store "minisom_defaults"; they still load."""
+    import json
+
+    data = blobs(n_samples=400)
+    som = trained(small_params(), data)
+    path = tmp_path / "old.npz"
+    som.save(path)
+    with np.load(path, allow_pickle=False) as archive:
+        weights = archive["weights"]
+        metadata = json.loads(str(archive["metadata"]))
+    metadata["params"]["minisom_defaults"] = False
+    np.savez(path, weights=weights, metadata=np.array(json.dumps(metadata)))
+
+    loaded = FloatSOM.load(path)
+    np.testing.assert_array_equal(host(loaded.predict(data)), host(som.predict(data)))

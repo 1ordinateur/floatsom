@@ -17,6 +17,8 @@ from floatsom.floatsom_params import FloatSOMParams, ProcessingConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCANNED_PATHS = ("src", "docs", "examples", "README.md", "pyproject.toml")
+# load_som drops this removed setting, so that older model files still load.
+ALLOWED_LINES = {("src/floatsom/base/persistence.py", 'settings.pop("minisom_defaults", None)')}
 
 
 def test_minisom_processing_method_is_rejected():
@@ -69,10 +71,12 @@ def test_package_sources_and_docs_do_not_mention_minisom():
     for name in SCANNED_PATHS:
         path = REPO_ROOT / name
         files.extend([path] if path.is_file() else (p for p in path.rglob("*") if p.is_file()))
-    hits = [
-        str(path.relative_to(REPO_ROOT))
-        for path in files
-        if "__pycache__" not in path.parts
-        and "minisom" in path.read_bytes().decode("utf-8", errors="ignore").lower()
-    ]
+    hits = []
+    for path in files:
+        if "__pycache__" in path.parts:
+            continue
+        name = path.relative_to(REPO_ROOT).as_posix()
+        for line in path.read_bytes().decode("utf-8", errors="ignore").splitlines():
+            if "minisom" in line.lower() and (name, line.strip()) not in ALLOWED_LINES:
+                hits.append(f"{name}: {line.strip()}")
     assert hits == []
