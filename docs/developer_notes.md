@@ -7,7 +7,7 @@ These notes are for people who change FloatSOM. Users do not need them.
 Most tests need a GPU. Run them in a GPU environment:
 
 ```bash
-pip install -e ".[cuda12,ray,dev]"
+pip install -e ".[ray-cuda12,dev]"
 python -m pytest
 ```
 

@@ -15,6 +15,7 @@ from ray.util import collective
 import logging
 from typing import List, Optional, Dict, Any, Tuple
 from ..processing_params import AsyncLoadingConfig
+from ..._optional_dependencies import NCCL_INSTALL_HINT
 import cupy as cp
 import numpy as np
 import psutil
@@ -672,6 +673,11 @@ class RayWorkerManager:
             except RuntimeError as exc:
                 last_error = exc
                 message = str(exc)
+                # Ray 2.56+: "Backend NCCL is registered but not available" (no
+                # PyTorch) or "Backend NCCL is not registered" (no NCCL library);
+                # Ray 2.50 to 2.55: "NCCL is not available."
+                if re.search(r"NCCL is (registered but )?not (available|registered)", message):
+                    raise RuntimeError(f"{NCCL_INSTALL_HINT} Ray message: {message}") from exc
                 if (
                     "Trying to initialize a group twice" not in message
                     and "initialize a group twice" not in message

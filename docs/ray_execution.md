@@ -5,11 +5,21 @@ use `train_som` for one GPU.
 
 ## Install
 
-Add the `ray` extra, for example:
+Use the `ray-cuda12` or `ray-cuda13` extra. It installs CuPy, the CUDA
+libraries, Ray, NCCL and PyTorch:
 
 ```bash
-pip install "floatsom[cuda12,ray] @ git+https://github.com/1ordinateur/floatsom.git"
+pip install "floatsom[ray-cuda12] @ git+https://github.com/1ordinateur/floatsom.git"
 ```
+
+If a cluster module gives CuPy, NCCL and PyTorch, use the `ray` extra. It
+installs only Ray.
+
+FloatSOM does not use PyTorch. Ray 2.50 and later find the NCCL backend only
+when PyTorch imports, so the `ray-cuda12` and `ray-cuda13` extras install it.
+PyTorch also selects the NCCL version and the CUDA library versions. With
+`ray-cuda12`, pip selects PyTorch 2.10 (the newest PyTorch for CUDA 12 on
+PyPI). With `ray-cuda13`, pip selects PyTorch 2.11 or later (CUDA 13).
 
 ## Train on several GPUs
 
@@ -64,8 +74,9 @@ cluster with the scheduler and network setup of your HPC system. Then
 connect the training process to it with `ray_address`. A local Ray instance
 does not find the other nodes of your allocation by itself.
 
-NCCL does the GPU collective operations. Install the CUDA extra that agrees
-with the toolkit of the cluster. Make sure that each node has the network and
-GPU transport that NCCL needs.
+NCCL does the GPU collective operations. The `ray-cuda12` and `ray-cuda13`
+extras install NCCL. Use the extra that agrees with "CUDA Version" in
+`nvidia-smi`. Make sure that each node has the network and GPU transport
+that NCCL needs.
 
 For the distributed tests, see the [developer notes](developer_notes.md#tests).

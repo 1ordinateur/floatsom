@@ -10,14 +10,25 @@ CUPY_INSTALL_HINT = (
     "Run nvidia-smi and read 'CUDA Version'. For 12.x, install with: "
     f'pip install "floatsom[cuda12] @ {GIT_SOURCE}". '
     "For 13.x, use floatsom[cuda13]. "
-    "For AMD GPUs, install CuPy for your ROCm version and then floatsom[rocm]. "
+    "For AMD GPUs, install CuPy for your ROCm version, then install floatsom with no extra. "
     "Run 'python -m floatsom' to check the GPU setup."
 )
 
 RAY_INSTALL_HINT = (
     "Multi-GPU processing (ProcessingConfig.ray_config) needs Ray, but Ray is not installed. "
-    f'Install it with: pip install "floatsom[ray] @ {GIT_SOURCE}". '
+    f'Install Ray, NCCL and PyTorch with: pip install "floatsom[ray-cuda12] @ {GIT_SOURCE}" '
+    "(use floatsom[ray-cuda13] for CUDA 13.x). "
+    "If a cluster module gives CuPy, NCCL and PyTorch, use floatsom[ray]. "
     "For single-GPU processing, set ray_config=None."
+)
+
+NCCL_INSTALL_HINT = (
+    "Ray found no NCCL backend for multi-GPU processing. "
+    "Ray needs the NCCL library, and Ray 2.50 and later also need PyTorch, also when "
+    "FloatSOM does not use PyTorch. "
+    f'Install CuPy, Ray, NCCL and PyTorch with: pip install "floatsom[ray-cuda12] @ {GIT_SOURCE}" '
+    "(use floatsom[ray-cuda13] for CUDA 13.x). "
+    "With a cluster module, install NCCL and PyTorch, or use Ray earlier than 2.50."
 )
 
 

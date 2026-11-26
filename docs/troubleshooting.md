@@ -7,10 +7,13 @@ tells you how to fix a problem that it finds.
 
 | Message or problem | Fix |
 | --- | --- |
-| `ImportError: FloatSOM needs CuPy ...` | Install FloatSOM with the `cuda12`, `cuda13` or `rocm` extra, as the [README](../README.md#install) shows. Then run `python -m floatsom`. |
+| `ImportError: FloatSOM needs CuPy ...` | Run `python -m floatsom`. It gives the install command for your driver. Or install FloatSOM with the `cuda12` or `cuda13` extra, as the [README](../README.md#install) shows. On AMD, install CuPy for ROCm first. |
+| `... the GPU driver supports only CUDA 11.x` | Update the GPU driver. FloatSOM needs a driver for CUDA 12 or later. |
 | `CuPy ... cannot use a GPU` | Make sure that the driver works (`nvidia-smi`). Make sure that the extra agrees with "CUDA Version" in `nvidia-smi`: 12.x needs `cuda12`, 13.x needs `cuda13`. |
 | `CuPy found no GPU` | On a cluster, run inside a GPU job. Check `CUDA_VISIBLE_DEVICES` (or `ROCR_VISIBLE_DEVICES` on AMD). |
-| `Multi-GPU processing ... needs Ray` | Install the `ray` extra, or set `ray_config=None` for one GPU. |
+| `Multi-GPU processing ... needs Ray` | Install the `ray-cuda12` or `ray-cuda13` extra (Ray, NCCL and PyTorch), or set `ray_config=None` for one GPU. With a cluster module that gives CuPy, NCCL and PyTorch, install the `ray` extra. |
+| `Ray found no NCCL backend ...` | Ray 2.50 and later need PyTorch for NCCL. Install the `ray-cuda12` or `ray-cuda13` extra, or install PyTorch. |
+| `CuPy ... for CUDA 13 cannot run a kernel on this GPU` | CUDA 13 has no support for GPUs below compute capability 7.5 (for example V100). Remove `cupy-cuda13x` and install the `cuda12` extra. |
 | CUDA out of memory | Set a smaller `ProcessingConfig.chunk_size`. `train_som` selects it from the GPU memory. For labels, use `som.infer(data, chunk_size=...)`. |
 
 ## Data

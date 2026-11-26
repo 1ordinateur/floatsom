@@ -1,0 +1,44 @@
+name: Publish to PyPI
+# Push a tag v<version> (the version in pyproject.toml) to publish.
+# PyPI trusted publishing: no token is stored in the repository.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install build twine
+      - name: Tag agrees with the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: >-
+          python -c "import os, sys, tomllib;
+          version = tomllib.load(open('pyproject.toml', 'rb'))['project']['version'];
+          tag = os.environ['TAG'];
+          sys.exit(0 if tag == 'v' + version else f'Tag {tag} is not v{version}')"
+      - run: python -m build
+      - run: python -m twine check --strict dist/*
+      - run: python tools/check_distribution.py dist/*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
