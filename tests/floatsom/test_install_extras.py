@@ -46,23 +46,25 @@ def test_gpu_extra_installs_no_nccl_and_no_ray(cuda):
 
 
 @pytest.mark.parametrize("cuda", ["12", "13"])
-def test_ray_gpu_extra_adds_ray_and_nccl(cuda):
+def test_ray_gpu_extra_adds_ray_nccl_and_pytorch(cuda):
+    # Ray 2.50 and later find the NCCL backend only when PyTorch imports.
+    # FloatSOM does not use PyTorch, but Ray needs it for NCCL.
     extra = requirements(f"ray-cuda{cuda}")
     assert extra["floatsom"].extras == {f"cuda{cuda}", "ray"}
-    assert f"nvidia-nccl-cu{cuda}" in extra
+    assert "torch" in extra
+    nccl = extra[f"nvidia-nccl-cu{cuda}"]
+    # PyTorch pins an exact NCCL version (2.27.5 for torch 2.10 with CUDA 12).
+    assert nccl.specifier.contains("2.27.5")
 
 
 def test_ray_extra_installs_only_ray():
     assert set(requirements("ray")) == {"ray"}
 
 
-def test_ray_extra_excludes_ray_that_needs_torch_for_nccl():
-    # Ray 2.56 and later find the NCCL backend only when PyTorch imports.
-    # FloatSOM uses CuPy for NCCL, so these versions fail with no PyTorch.
+def test_ray_extra_accepts_new_ray():
     ray = requirements("ray")["ray"]
     assert ray.specifier.contains("2.47.1")
-    assert ray.specifier.contains("2.55.1")
-    assert not ray.specifier.contains("2.56.0")
+    assert ray.specifier.contains("2.60.1")
 
 
 def test_networkx_is_a_core_dependency():
