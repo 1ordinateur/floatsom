@@ -12,10 +12,13 @@ pytest.importorskip("ray")
 
 from floatsom.processing.ray_ops import ray_pipeline_base  # noqa: E402
 
-# The messages of Ray 2.56 and later, and of Ray 2.50 to 2.55.
+# The messages of Ray 2.56 and later (no PyTorch; no NCCL library), and of
+# Ray 2.50 to 2.55.
 RAY_NO_NCCL_MESSAGES = [
     "Backend NCCL is registered but not available. "
     "Please check the installation requirements for this backend.",
+    "Backend NCCL is not registered. "
+    "Please register it using register_collective_backend('NCCL', YourBackendClass).",
     "NCCL is not available.",
 ]
 

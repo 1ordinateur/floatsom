@@ -45,16 +45,33 @@ def test_gpu_extra_installs_no_nccl_and_no_ray(cuda):
     assert set(requirements(f"cuda{cuda}")) == {f"cupy-cuda{cuda}x"}
 
 
-@pytest.mark.parametrize("cuda", ["12", "13"])
-def test_ray_gpu_extra_adds_ray_nccl_and_pytorch(cuda):
+@pytest.mark.parametrize("cuda, torch_nccl", [("12", "2.27.5"), ("13", "2.28.9")])
+def test_ray_gpu_extra_adds_ray_nccl_and_pytorch(cuda, torch_nccl):
     # Ray 2.50 and later find the NCCL backend only when PyTorch imports.
     # FloatSOM does not use PyTorch, but Ray needs it for NCCL.
     extra = requirements(f"ray-cuda{cuda}")
     assert extra["floatsom"].extras == {f"cuda{cuda}", "ray"}
     assert "torch" in extra
     nccl = extra[f"nvidia-nccl-cu{cuda}"]
-    # PyTorch pins an exact NCCL version (2.27.5 for torch 2.10 with CUDA 12).
-    assert nccl.specifier.contains("2.27.5")
+    # PyTorch pins an exact NCCL version: 2.27.5 for torch 2.10 (CUDA 12),
+    # 2.28.9 for torch 2.11 (CUDA 13).
+    assert nccl.specifier.contains(torch_nccl)
+
+
+@pytest.mark.parametrize(
+    "cuda, allowed, refused",
+    [
+        # torch 2.10 is the last PyTorch for CUDA 12 on PyPI; 2.11 and later use CUDA 13.
+        ("12", ["2.5.0", "2.10.0"], ["2.11.0", "2.15.0"]),
+        ("13", ["2.11.0", "2.15.0"], ["2.10.0"]),
+    ],
+)
+def test_ray_gpu_extra_selects_pytorch_for_the_same_cuda(cuda, allowed, refused):
+    # Without these bounds, some pip versions give PyTorch for CUDA 12 with
+    # cuda13, which installs two CUDA stacks and two NCCL wheels.
+    torch = requirements(f"ray-cuda{cuda}")["torch"]
+    assert all(torch.specifier.contains(version) for version in allowed)
+    assert not any(torch.specifier.contains(version) for version in refused)
 
 
 def test_ray_extra_installs_only_ray():
